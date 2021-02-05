@@ -31,7 +31,8 @@ HEADERS += \
     DMetaType.h \
     DMultiMatrix.h \
     DProfiler.h \
-    DothTemplateLibrary.h
+    DothTemplateLibrary.h \
+    dmem.h
 
 # Default rules for deployment.
 unix {
