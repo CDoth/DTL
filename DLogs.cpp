@@ -415,7 +415,6 @@ DLogMaster::~DLogMaster()
 {
     if(!context->check_fflag(DLogContext::format_flag::FLUSH_ALL)) context->new_line();
 }
-
 DLogMaster &DLogMaster::operator()(const char *_caller_name)
 {
     context->add_header(_caller_name);
@@ -426,7 +425,6 @@ DLogMaster &DLogMaster::with_header(const char *_caller_name)
     context->add_header(_caller_name);
     return *this;
 }
-
 void DLogMaster::sep()
 {
     context->flush(context->separator);
@@ -492,8 +490,6 @@ DLogMaster &DLogMaster::operator <<(separator_t)
     return *this;
 }
 //---------------------------------------------------------------------
-
-
 void DLogs::sep(DLogContext *c)
 {
     DLogMaster(c).sep();

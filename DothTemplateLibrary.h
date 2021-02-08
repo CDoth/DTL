@@ -10,5 +10,5 @@
 #include "DMatrixTrack.h"
 #include "DMultiMatrix.h"
 #include "DProfiler.h"
-
+#include "dmem.h"
 #endif // DOTHTEMPLATELIBRARY_H

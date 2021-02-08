@@ -83,13 +83,15 @@ template <class T>
 class DMultiMatrix : public DHolder<DMultiMatrixData<T>>
 {
 public:
-    DMultiMatrix() :  DHolder<DMultiMatrixData<T>>(), d(this->alloc()) {}
+    DMultiMatrix() :  DHolder<DMultiMatrixData<T>>() {}
     DMultiMatrix(int size, int w, int h) :  DHolder<DMultiMatrixData<T>>(), d(this->alloc(size, w, h)){}
     void allocate(int size, int w, int h){data_detach(); d = this->alloc(size, w, h);}
     int size() const {return d->size;}
     int width() const {return d->w;}
     int height() const {return d->h;}
     int matrix_size() const {return d->w * d->h;}
+
+
 
     typedef typename DMultiMatrixData<T>::iterator iterator;
     typedef typename DMultiMatrixData<T>::const_iterator const_iterator;

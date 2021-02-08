@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include <QDebug>
+#include "dmem.h"
 
 template <class T>
 class DArray
@@ -29,10 +30,14 @@ public:
     typedef T* iterator;
     typedef const T* const_iterator;
 
-    iterator begin() const {return h->data;}
-    iterator end() const {return h->data + h->size;}
+    iterator begin() {return h->data;}
+    iterator end() {return h->data + h->size;}
+    const_iterator constBegin() const {return h->data;}
+    const_iterator constEnd() const {return h->data + h->size;}
 
+    T& last() {return h->data[h->size-1];}
     T& operator[](int i) {return h->data[i];}
+    const T& operator[](int i) const {return h->data[i];}
 
     void reserve(int s);
     void reserve_up(int s);
@@ -57,11 +62,13 @@ public:
 
     T *make_unique();
     bool is_unique() const;
-    enum DetachMode {Detach = 1, NoDetach = 0};
+
     T* try_detach();
-    void set_detach_mode(bool);
+    void setShareCopyable(bool detach = false);
+    void setSaveCopyable(bool detach = false);
 
 private:
+    enum CopyMode {ShareMode = 1, SaveMode = 0};
     struct handler
     {
         T* data;
@@ -76,7 +83,7 @@ private:
         std::mutex mu;
     };
     handler* h;
-    DetachMode dm = Detach;
+    CopyMode cm = SaveMode;
 
 
     inline void hold_it(T* _src, int s, bool watch)
@@ -112,7 +119,7 @@ private:
                 if(h->is_c_mem)
                 {
                     for(auto it = begin(); it != end(); it++) it->~T();
-                    free (h->data);
+                    free_mem(h->data);
                 }
                 else delete[] h->data;
                 h->data = nullptr;
@@ -122,10 +129,6 @@ private:
         }
     }
 
-    T* _mem(const int& s)
-    {
-        return (T*)malloc(sizeof(T) * s);
-    }
 };
 
 template <class T>
@@ -136,12 +139,15 @@ DArray<T>::DArray()
 template <class T>
 DArray<T>::DArray(int s)
 {
-    hold_it(new T[s], s, true);
+    hold_it(get_mem<T>(s), s, true);
+    h->is_c_mem = true;
+    T* it = begin();
+    while(it != end()) new (it++) T();
 }
 template <class T>
 DArray<T>::DArray(int s, const T& v)
 {
-    hold_it(_mem(s), s, true);
+    hold_it(get_mem<T>(s), s, true);
     h->is_c_mem = true;
     T* it = begin();
     while(it != end()) new (it++) T(v);
@@ -161,7 +167,7 @@ template <class T>
 void DArray<T>::alloc(int s, const T& v)
 {
     pull();
-    hold_it(_mem(s), s, true);
+    hold_it(get_mem<T>(s), s, true);
     h->is_c_mem = true;
     T* it = begin();
     while(it != end()) new (it++) T(v);
@@ -170,7 +176,7 @@ template <class T>
 void DArray<T>::reserve(int s)
 {
     pull();
-    hold_it(_mem(s), 0, true);
+    hold_it(get_mem<T>(s), 0, true);
     h->is_c_mem = true;
     h->reserved = s;
 }
@@ -279,7 +285,7 @@ T* DArray<T>::make_unique()
 template <class T>
 T* DArray<T>::try_detach()
 {
-    return dm == Detach? make_unique() : begin();
+    return cm == SaveMode? make_unique() : begin();
 }
 template <class T>
 bool DArray<T>::is_unique() const
@@ -287,10 +293,17 @@ bool DArray<T>::is_unique() const
     return h->refs == 1;
 }
 template <class T>
-void DArray<T>::set_detach_mode(bool m)
+void DArray<T>::setShareCopyable(bool detach)
 {
-    if(dm == NoDetach && m == true) make_unique();
-    dm = m;
+    if(cm == SaveMode && detach)
+        make_unique();
+    cm = ShareMode;
 }
-
+template <class T>
+void DArray<T>::setSaveCopyable(bool detach)
+{
+    if(cm == ShareMode && detach)
+        make_unique();
+    cm = SaveMode;
+}
 #endif // DARRAY_H
