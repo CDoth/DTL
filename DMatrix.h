@@ -1,7 +1,8 @@
 #ifndef DMATRIX_H
 #define DMATRIX_H
-#include <DHolder.h>
+#include <DWatcher.h>
 #include <QDebug>
+#include "dmem.h"
 
 template <class T>
 class DMatrixData
@@ -14,25 +15,17 @@ public:
     int placed;
     void freeData()
     {
-        if(data && !placed)
-        {
-            qDebug()<<"DMatrixData: freeData: can free"<<this;
-            free(data);
-        }
+        if(!placed) free_mem(data);
     }
     void clear()
     {
+        size = 0;
+        w = 0;
+        h = 0;
         placed = 0;
         data = nullptr;
     }
-    void rep_alloc(int _size, T* to = nullptr)
-    {
-//        qDebug()<<"DMatrixData: rep_alloc"<<this;
-        if(_size <= 0) return;
-        freeData();
-        data = to? placed = 1, to: (T*)malloc(sizeof(T)*size);
-        memset(data, 0, sizeof(T)*size);
-    }
+
     DMatrixData()
     {
         qDebug()<<"DMatrixData: create empty"<<this;
@@ -45,7 +38,8 @@ public:
         w = _w;
         h = _h;
         size = w*h;
-        rep_alloc(size, to);
+        data = to? placed = 1, to: get_mem<T>(size);
+        zero_mem(data, size);
     }
     DMatrixData(const DMatrixData& r, T* to = nullptr)
     {
@@ -54,8 +48,9 @@ public:
         w = r.w;
         h = r.h;
         size = r.size;
-        rep_alloc(size, to);
-        memcpy(data, r.data, sizeof(T)*size);
+        freeData();
+        data = to? placed = 1, to: get_mem<T>(size);
+        copy_mem(data, r.data, size);
     }
     ~DMatrixData()
     {
@@ -65,14 +60,20 @@ public:
     }
 };
 template <class T>
-class DMatrix : public DHolder<DMatrixData<T>>
+class DMatrix
 {
 public:
     DMatrix();
     DMatrix(int w, int h, T* place = nullptr);
-    DMatrix(const DMatrix&, T*);
 
-    ~DMatrix();
+    //-----------------------------------
+    DMatrix(const DMatrix&, T*p = nullptr);
+    DMatrix& operator=(const DMatrix&);
+    //-----------------------------------
+    ~DMatrix()
+    {
+        if(w->pull() == 0) {delete data();delete w;}
+    }
 
     typedef T* iterator;
     typedef const T* const_iterator;
@@ -91,35 +92,94 @@ public:
     void copy(const DMatrix& from);
     void unite(const DMatrix<T>& with);
 
-    int height() const {return d->h;}
-    int width()  const {return d->w;}
-    int area()   const {return d->size;}
+    int height() const {return data()->h;}
+    int width()  const {return data()->w;}
+    int area()   const {return data()->size;}
 
-    void move_data(T* place);
+    void swap(DMatrix<T>&);
+    inline void make_unique() {detach();}
+    void setMode(WatcherMode m)
+    {
+        if(m != w->mode())
+        {
+            w->refDown();
+            w = w->otherSide();
+            w->refUp();
+        }
+    }
 private:
-    void rep_detach(){d = this->try_detach();}
-    DMatrixData<T>* d;
+    DMatrixData<T>* clone()
+    {return new DMatrixData<T>(*data());}
+    void detach()
+    {
+        if(!w->is_unique())
+        {
+            if(w->is_share() && w->otherSideRefs())
+            {
+                if(data()->placed)
+                    w->otherSide()->disconnect(clone());
+                else
+                    w->disconnect(clone());
+            }
+            else if(w->is_clone())
+            {
+                w->refDown();
+                w = new DDualWatcher(clone(), CloneWatcher);
+            }
+        }
+    }
+    DDualWatcher* w;
+    DMatrixData<T>* data()
+    {return reinterpret_cast<DMatrixData<T>* >(w->d());}
+    const DMatrixData<T>* data() const
+    {return reinterpret_cast<const DMatrixData<T>* >(w->d());}
 };
 template <class T>
-void DMatrix<T>::move_data(T* place)
+DMatrix<T>::DMatrix()
 {
-    DMatrixData<T> *md = new DMatrixData<T>(*d, place);
-    this->set(md,true);
+    DMatrixData<T>* d = new DMatrixData<T>();
+    w = new DDualWatcher(d, CloneWatcher);
 }
 template <class T>
-DMatrix<T>::DMatrix() : DHolder<DMatrixData<T>>()
+DMatrix<T>::DMatrix(int width, int height, T* place)
 {
-    d = this->alloc();
+    DMatrixData<T>* d = new DMatrixData<T>(width,height,place);
+    w = new DDualWatcher(d, CloneWatcher);
+    if(place) setMode(ShareWatcher);
 }
 template <class T>
-DMatrix<T>::DMatrix(int w, int h, T* place) : DHolder<DMatrixData<T>>()
+DMatrix<T>::DMatrix(const DMatrix<T>& m, T* place)
 {
-    d = this->alloc(w,h,place);
+    if(place)
+    {
+        DMatrixData<T>* d = new DMatrixData<T>(m,place);
+        w = new DDualWatcher(d, CloneWatcher);
+        setMode(ShareWatcher);
+    }
+    else
+    {
+        w = m.w;
+        w->refUp();
+    }
 }
 template <class T>
-DMatrix<T>::DMatrix(const DMatrix<T>& m, T* place) : DHolder<DMatrixData<T>>()
+void DMatrix<T>::swap(DMatrix<T>& with)
 {
-    d = this->alloc(*m.d, place);
+    std::swap(w, with.w);
+}
+template <class T>
+DMatrix<T>& DMatrix<T>::operator=(const DMatrix<T>& m)
+{
+    if(w != m.w)
+    {
+        if(data()->placed) copy(m);
+        else
+        {
+            DMatrix<T> tmp(m);
+            tmp.swap(*this);
+        }
+    }
+    return *this;
 }
 template <class T>
 void DMatrix<T>::fill(const T& v)
@@ -131,8 +191,9 @@ void DMatrix<T>::fill(const T& v)
 template <class T>
 void DMatrix<T>::run(void (*F)(T&))
 {
-    iterator it = begin();
-    while(it != end()) F(*it++);
+    iterator b = begin();
+    iterator e = end();
+    while(b != e) F(*b++);
 }
 template <class T>
 void DMatrix<T>::run_to(const T& (*F)(const T&), DMatrix* to)
@@ -145,35 +206,35 @@ void DMatrix<T>::run_to(const T& (*F)(const T&), DMatrix* to)
 template <class T>
 typename DMatrix<T>::iterator DMatrix<T>::begin()
 {
-    rep_detach();
-    return d->data;
+    detach();
+    return data()->data;
 }
 template <class T>
 typename DMatrix<T>::iterator DMatrix<T>::end()
 {
-    rep_detach();
-    return d->data + d->size;
+    detach();
+    return data()->data + data()->size;
 }
 template <class T>
 T* DMatrix<T>::operator[](int i)
 {
-    rep_detach();
-    return &d->data[i*d->h];
+    detach();
+    return &data()->data[i*data()->h];
 }
 template <class T>
 typename DMatrix<T>::const_iterator DMatrix<T>::constBegin() const
 {
-    return d->data;
+    return data()->data;
 }
 template <class T>
 typename DMatrix<T>::const_iterator DMatrix<T>::constEnd() const
 {
-    return d->data + d->size;
+    return data()->data + data()->size;
 }
 template <class T>
 const T* DMatrix<T>::operator[](int i) const
 {
-    return &d->data[i*d->h];
+    return &data()->data[i*data()->h];
 }
 //---------------------------------------------------------------------------
 template <class T>
@@ -187,12 +248,9 @@ void DMatrix<T>::unite(const DMatrix<T>& with)
 template <class T>
 void DMatrix<T>::copy(const DMatrix& from)
 {
-    rep_detach();
-    memcpy(d->data, from.inner->data, sizeof(T)*d->size);
+    detach();
+    copy_mem(data()->data, from.data()->data, data()->size);
 }
-template <class T>
-DMatrix<T>::~DMatrix<T>()
-{
-}
+
 
 #endif // DMATRIX_H

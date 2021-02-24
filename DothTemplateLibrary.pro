@@ -1,4 +1,4 @@
-QT -= gui
+QT += gui
 
 TEMPLATE = lib
 CONFIG += staticlib
@@ -17,11 +17,14 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-    DLogs.cpp
+    DDirReader.cpp \
+    DLogs.cpp \
+    DTcp.cpp
 
 HEADERS += \
     DArray.h \
     DBox.h \
+    DDirReader.h \
     DHolder.h \
     DItem.h \
     DList.h \
@@ -31,7 +34,12 @@ HEADERS += \
     DMetaType.h \
     DMultiMatrix.h \
     DProfiler.h \
+    DRgbImage.h \
+    DTcp.h \
+    DThreadHandler.h \
+    DWatcher.h \
     DothTemplateLibrary.h \
+    daran.h \
     dmem.h
 
 # Default rules for deployment.

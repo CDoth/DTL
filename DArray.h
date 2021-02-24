@@ -1,309 +1,270 @@
 #ifndef DARRAY_H
 #define DARRAY_H
 
-#include <mutex>
 #include <QDebug>
+#include "DWatcher.h"
 #include "dmem.h"
 
-template <class T>
+struct FastWriteSlowRead { enum {FastWrite = true}; };
+struct SlowWriteFastRead { enum {FastWrite = false}; };
+
+template <class T, class WriteModel = FastWriteSlowRead>
 class DArray
 {
+    struct LargeType {enum {DirectPlacement = false};};
+    struct SmallType {enum {DirectPlacement = true};};
+    struct TrivialType {};
+    struct ComplexType {};
+
+
+    struct __metatype : std::conditional<  (!WriteModel::FastWrite), SmallType,  typename std::conditional< (sizeof(T) > sizeof(void*)),  LargeType, SmallType>::type>::type,
+                        std::conditional<  (std::is_trivial<T>::value), TrivialType, ComplexType>::type
+      {};
 public:
-    DArray();
+    struct complex_iterator;
+    struct const_complex_iterator;
+    typedef typename std::conditional< (__metatype::DirectPlacement), T*, complex_iterator>::type iterator;
+    typedef typename std::conditional< (__metatype::DirectPlacement), const T*, const_complex_iterator>::type const_iterator;
+    typedef typename std::conditional< (__metatype::DirectPlacement), T, T*>::type stored_type;
 
-    explicit DArray(int s);
-    DArray(int s, const T&);
-    DArray(T* _src, int s);
-
-    ~DArray();
-    //-----------------------------
-    DArray(const DArray& a);
-    DArray(DArray& a) = delete;
-    DArray(const DArray&& a) = delete;
-    DArray(DArray&& a) = delete;
-
-    DArray& operator=(const DArray& a);
-    DArray& operator=(DArray& a) = delete;
-    DArray& operator=(const DArray&& a) = delete;
-    DArray& operator=(DArray&& a) = delete;
-    //-----------------------------
-    typedef T* iterator;
-    typedef const T* const_iterator;
-
-    iterator begin() {return h->data;}
-    iterator end() {return h->data + h->size;}
-    const_iterator constBegin() const {return h->data;}
-    const_iterator constEnd() const {return h->data + h->size;}
-
-    T& last() {return h->data[h->size-1];}
-    T& operator[](int i) {return h->data[i];}
-    const T& operator[](int i) const {return h->data[i];}
-
-    void reserve(int s);
-    void reserve_up(int s);
-
-    int  mount(const T&);
-    int  mount();
-    void push_back(const T&);
-    void push_back();
-
-    void alloc(int s, const T&);
-    void alloc(int s);
-    void set(T* _src, int s);
-
-    void enable_watch() {h->watch_it = true;}
-    void disable_watch() {h->watch_it = false;}
-    bool is_watch() const {return h->watch_it;}
-    int holders() const {return h->refs;}
-    int size() const {return h->size;}
-    void cpy(const DArray& _from);
-    void fill(const T&);
-    void fill_reserved(const T&);
-
-    T *make_unique();
-    bool is_unique() const;
-
-    T* try_detach();
-    void setShareCopyable(bool detach = false);
-    void setSaveCopyable(bool detach = false);
-
-private:
-    enum CopyMode {ShareMode = 1, SaveMode = 0};
-    struct handler
+    DArray()
     {
-        T* data;
-        int size;
-        int reserved;
-
-        int refs;
-
-        bool is_c_mem;
-        bool watch_it;
-
-        std::mutex mu;
-    };
-    handler* h;
-    CopyMode cm = SaveMode;
-
-
-    inline void hold_it(T* _src, int s, bool watch)
-    {
-        h = new handler;
-        h->data = _src;
-        h->size = s;
-        h->reserved = s;
-        h->is_c_mem = false;
-        h->watch_it = watch;
-        h->refs = 1;
+        Data* d = new Data(sizeof(stored_type));
+        w = new DDualWatcher(d, CloneWatcher);
     }
-    inline int ref_down()
+    DArray(int s)
     {
-        h->mu.lock();
-        --h->refs;
-        h->mu.unlock();
-        return h->refs;
+        Data* d = new Data(sizeof(stored_type));
+        w = new DDualWatcher(d, CloneWatcher);
+        while(s--) append();
     }
-    inline int ref_up()
+    ~DArray()
     {
-        h->mu.lock();
-        ++h->refs;
-        h->mu.unlock();
-        return h->refs;
+        if(w->pull() == 0) {_destruct(__metatype()); delete w;}
     }
-    inline void pull()
+
+    DArray(const DArray& a)
     {
-        if(ref_down() == 0)
+        w = a.w;
+        w->refUp();
+    }
+    DArray& operator=(const DArray& a)
+    {
+        if(w != a.w)
         {
-            if(h->watch_it && h->data)
-            {
-                if(h->is_c_mem)
-                {
-                    for(auto it = begin(); it != end(); it++) it->~T();
-                    free_mem(h->data);
-                }
-                else delete[] h->data;
-                h->data = nullptr;
-            }
-            delete h;
-            h = nullptr;
+            DArray<T> tmp(a);
+            tmp.swap(*this);
+        }
+        return *this;
+    }
+
+    struct complex_iterator
+    {
+        complex_iterator() : p(nullptr){}
+        complex_iterator(T** _p) : p(_p){}
+        inline T& operator*() const {return **p;}
+        inline T* operator->() const {return *p;}
+        inline complex_iterator& operator++(){++p; return *this;}
+        inline complex_iterator operator++(int){complex_iterator it(p); ++p; return it;}
+        inline complex_iterator& operator--(){--p; return *this;}
+        inline complex_iterator operator--(int){complex_iterator it(p); --p; return it;}
+        inline  bool operator==(const complex_iterator& it) const noexcept { return p==it.p; }
+        inline  bool operator!=(const complex_iterator& it) const noexcept { return p!=it.p; }
+        inline  bool operator==(const const_complex_iterator& it) const noexcept { return p==it.p; }
+        inline  bool operator!=(const const_complex_iterator& it) const noexcept { return p!=it.p; }
+        inline complex_iterator operator+(int i) const {return complex_iterator(p+i);}
+        inline complex_iterator operator-(int i) const {return complex_iterator(p-i);}
+        T** p;
+    };
+    struct const_complex_iterator
+    {
+        const_complex_iterator() : p(nullptr){}
+        const_complex_iterator(T** _p) : p(_p){}
+        inline const T& operator*() const {return **p;}
+        inline const T* operator->() const {return *p;}
+        inline const_complex_iterator& operator++(){++p; return *this;}
+        inline const_complex_iterator operator++(int) {const_complex_iterator it(p); ++p; return it;}
+        inline const_complex_iterator& operator--() {--p; return *this;}
+        inline const_complex_iterator operator--(int){const_complex_iterator it(p); --p; return it;}
+        inline  bool operator==(const const_complex_iterator& it) const noexcept { return p==it.p;}
+        inline  bool operator!=(const const_complex_iterator& it) const noexcept { return p!=it.p;}
+        inline const_complex_iterator operator+(int i) const {return const_complex_iterator(p+i);}
+        inline const_complex_iterator operator-(int i) const {return const_complex_iterator(p-i);}
+        T** p;
+    };
+
+
+    iterator begin() { return data()->t();}
+    iterator end() {return data()->t() + data()->size;}
+    const_iterator constBegin() const {return data()->t();}
+    const_iterator constEnd() const {return data()->t() + data()->size;}
+//-------------------------------------------------------------------------------------------
+public:
+    void setMode(WatcherMode m)
+    {
+        if(m != w->mode())
+        {
+            w->refDown();
+            w = w->otherSide();
+            w->refUp();
         }
     }
 
+    inline void make_unique(){detach();}
+public:
+    const char* type_size_name() const {return _type_size(__metatype());}
+    const char* type_signature_name() const {return _type_signature(__metatype());}
+    int size() const {return data()->size;}
+//-------------------------------------------------------------------------------------------
+    int cell_size() const {return sizeof(stored_type);}
+    int reserved() const {return data()->alloc;}
+    bool empty() const {return !data()->size;}
+    const T& constFirst() const {return _get_ref(0);}
+    const T& constLast() const {return _get_ref(data()->size-1);}
+    const T& operator[](int i) const {return _get_ref(i);}
+
+    void append(){detach();   _push(data()->_get_place(), __metatype());}
+    void append(const T& t) {detach();  _push(t, data()->_get_place(), __metatype());}
+    void append(const T& t, int n) {detach(); while(n--) append(t);}
+    void reserve(int s) {detach(); data()->_reserve(s);}
+    void remove(int i) {detach(); _remove(i, __metatype());}
+    T& operator[](int i) {detach(); return _get_ref(i, __metatype());}
+    void clear() {detach(); *this = DArray();}
+    T& first() {detach(); return _get_ref(0);}
+    T& last() {detach(); return _get_ref(data()->size-1);}
+    void push_back(const T& v) {detach(); append(v);}
+    void replace(int i, const T& v) {if(i >= 0 && i < data()->size){detach(); _get_ref(i, __metatype()) = v;}}
+
+    void swap(DArray<T>& with){std::swap(w, with.w);}
+private:
+    struct Data
+    {
+        Data(int cs) : data(nullptr), alloc(0), size(0), cell_size(cs){}
+        ~Data() {free_mem(data);}
+        void* data;
+        int alloc;
+        int size;
+        int cell_size;
+
+        stored_type* t()
+        {return reinterpret_cast<stored_type*>(data);}
+        const stored_type* t() const
+        {return reinterpret_cast<const stored_type*>(data);}
+
+        void  _reserve(int s)
+        {
+            if( s > alloc )
+            {
+                alloc = s;
+                data = reget_mem(data, _real_size( alloc ));
+            }
+        }
+        void* _get_place()
+        {
+            if(alloc == size) _reserve_up();
+            return reinterpret_cast<char*>(data) + _real_size(size++);
+        }
+        int   _real_size(int s) {return s*cell_size;}
+        void  _reserve_up()
+        {
+            alloc = ( size + 1 ) * 2;
+            data = reget_mem(data, _real_size( alloc ));
+        }
+
+    };
+    DDualWatcher* w;
+
+
+    Data* clone()
+    {
+        Data* _d = new Data(sizeof(stored_type));
+        _d->_reserve(data()->alloc);
+        auto b_source = constBegin();
+        auto e_source = constEnd();
+        while(b_source != e_source) _push(*b_source++, _d->_get_place(), __metatype());
+        return _d;
+    }
+    void detach()
+    {
+        if(!w->is_unique())
+        {
+            if(w->is_share() && w->otherSideRefs()) w->disconnect(clone());
+            else if(w->is_clone())
+            {
+                w->refDown();
+                w = new DDualWatcher(clone(), CloneWatcher);
+            }
+        }
+    }
+//---------------------------------------------------------------------------------------
+    Data* data() {return reinterpret_cast<Data*>(w->d());}
+    const Data* data() const {return reinterpret_cast<const Data*>(w->d());}
+
+    const char* _type_size(LargeType) const {return "<Large Type>";}
+    const char* _type_size(SmallType) const {return "<Small Type>";}
+    const char* _type_signature(TrivialType) const {return "<Trivial Type>";}
+    const char* _type_signature(ComplexType) const {return "<Complex Type>";}
+
+    void _push(void* place, SmallType)
+    {
+        if(std::is_trivial<T>::value) *reinterpret_cast<T*>(place) = T();
+        else new (place) T;
+    }
+    void _push( void* place, LargeType)
+    {
+        *reinterpret_cast<T**>(place) = new T;
+    }
+    void _push(const T& t, void* place, SmallType)
+    {
+        if(std::is_trivial<T>::value)
+            *reinterpret_cast<T*>(place) = t;
+        else
+            new (place) T(t);
+    }
+    void _push(const T& t, void* place, LargeType)
+    {
+        *reinterpret_cast<T**>(place) = new T(t);
+    }
+
+    void _remove( int i, SmallType )
+    {
+        if(!std::is_trivial<T>::value) reinterpret_cast<T*>(data()->t() + i)->~T();
+        memcpy( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1) * sizeof(stored_type)  );
+        --data()->size;
+    }
+    void _remove( int i, LargeType )
+    {
+        delete *reinterpret_cast<T**>(data()->t() + i);
+        memcpy( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1) * sizeof(stored_type)  );
+        --data()->size;
+    }
+    const T& _get_ref(int i) const
+    {
+        if(__metatype::DirectPlacement) return *reinterpret_cast<const T*>(  data()->t() + i  );
+        else return **reinterpret_cast<T*const*>(  data()->t() + i  );
+
+    }
+    T& _get_ref(int i)
+    {
+        if(__metatype::DirectPlacement) return *reinterpret_cast<T*>(  data()->t() + i  );
+        else return **reinterpret_cast<T**>(  data()->t() + i  );
+    }
+    void _destruct(SmallType)
+    {
+        auto b = data()->t();
+        auto e = data()->t() + data()->size;
+        if(!std::is_trivial<T>::value)
+            while(b != e) (--e)->~T();
+        delete data();
+    }
+    void _destruct(LargeType)
+    {
+        auto b = data()->t();
+        auto e = data()->t() + data()->size;
+        while(b != e) delete *(--e);
+        delete data();
+    }
 };
 
-template <class T>
-DArray<T>::DArray()
-{
-    hold_it(nullptr, 0, false);
-}
-template <class T>
-DArray<T>::DArray(int s)
-{
-    hold_it(get_mem<T>(s), s, true);
-    h->is_c_mem = true;
-    T* it = begin();
-    while(it != end()) new (it++) T();
-}
-template <class T>
-DArray<T>::DArray(int s, const T& v)
-{
-    hold_it(get_mem<T>(s), s, true);
-    h->is_c_mem = true;
-    T* it = begin();
-    while(it != end()) new (it++) T(v);
-}
-template <class T>
-DArray<T>::DArray(T* _src, int s)
-{
-    hold_it(_src, s, false);
-}
-template <class T>
-void DArray<T>::alloc(int s)
-{
-    pull();
-    hold_it(new T[s], s, true);
-}
-template <class T>
-void DArray<T>::alloc(int s, const T& v)
-{
-    pull();
-    hold_it(get_mem<T>(s), s, true);
-    h->is_c_mem = true;
-    T* it = begin();
-    while(it != end()) new (it++) T(v);
-}
-template <class T>
-void DArray<T>::reserve(int s)
-{
-    pull();
-    hold_it(get_mem<T>(s), 0, true);
-    h->is_c_mem = true;
-    h->reserved = s;
-}
-template <class T>
-void DArray<T>::reserve_up(int s)
-{
-    hold_it((T*)realloc(h->data, sizeof(T) * (h->size + s)), h->size, true);
-    h->is_c_mem = true;
-    h->reserved = h->size + s;
-}
-template <class T>
-int DArray<T>::mount()
-{
-    if(h->size < h->reserved)
-    {
-        new (end()) T;
-        ++h->size;
-    }
-    return h->reserved - h->size;
-}
-template <class T>
-int DArray<T>::mount(const T& v)
-{
-    if(h->size < h->reserved)
-    {
-        new (end()) T(v);
-        ++h->size;
-    }
-    return h->reserved - h->size;
-}
-template <class T>
-void DArray<T>::push_back()
-{
-    if(h->size == h->reserved) reserve_up(1);
-    mount();
-}
-template <class T>
-void DArray<T>::push_back(const T& v)
-{
-    if(h->size == h->reserved) reserve_up(1);
-    mount(v);
-}
-template <class T>
-void DArray<T>::set(T* _src, int s)
-{
-    pull();
-    hold_it(_src, s, false);
-}
-template<class T>
-void DArray<T>::fill(const T &v)
-{
-    iterator it = begin();
-    while(it != end()) *it++ = v;
-}
-template <class T>
-void DArray<T>::fill_reserved(const T& v)
-{
-    while(mount(v));
-}
-template <class T>
-DArray<T>::DArray(const DArray& a)
-{
-    h = a.h;
-    ref_up();
-}
-template <class T>
-DArray<T>& DArray<T>::operator=(const DArray<T>& a)
-{
-    if(this != &a)
-    {
-        pull();
-        h = a.h;
-        ref_up();
-    }
-    return *this;
-}
-template <class T>
-DArray<T>::~DArray()
-{
-    pull();
-}
-template <class T>
-void DArray<T>::cpy(const DArray& _from)
-{
-    if(h->data && _from._data && h->size == _from._size)
-    {
-        memcpy(h->data, _from._data, sizeof(T) * h->size);
-    }
-}
-template <class T>
-T* DArray<T>::make_unique()
-{
-    if(is_unique())
-    {
-        T* load_to = _mem(h->size);
-        auto to_b = load_to;
-        auto b = begin();
-        while( b != end() ) new (to_b++) T(*b++);
-        int size = h->size;
-        ref_down();
-        hold_it(load_to, size, true);
-        h->is_c_mem = true;
-    }
-    return begin();
-}
-template <class T>
-T* DArray<T>::try_detach()
-{
-    return cm == SaveMode? make_unique() : begin();
-}
-template <class T>
-bool DArray<T>::is_unique() const
-{
-    return h->refs == 1;
-}
-template <class T>
-void DArray<T>::setShareCopyable(bool detach)
-{
-    if(cm == SaveMode && detach)
-        make_unique();
-    cm = ShareMode;
-}
-template <class T>
-void DArray<T>::setSaveCopyable(bool detach)
-{
-    if(cm == ShareMode && detach)
-        make_unique();
-    cm = SaveMode;
-}
+
 #endif // DARRAY_H

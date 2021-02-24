@@ -28,6 +28,7 @@ public:
         Item* original;
     };
 
+    typedef Item* item_holder;
     Item* pull();
     int   push(Item*);
     const int& size() const {return _size;}

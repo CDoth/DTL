@@ -80,16 +80,14 @@ namespace DItems
         T value;
     };
     template <class T>
-    struct MetaType
-    {
-        typedef typename std::conditional<std::is_fundamental<T>::value || std::is_pointer<T>::value, TypeWrapper<T>, T>::type type;
-    };
+    struct _mtype
+    { typedef typename std::conditional<std::is_fundamental<T>::value || std::is_pointer<T>::value, TypeWrapper<T>, T>::type type; };
 
     template <class T>
-    class MetaItem : public MetaType<T>::type
+    class MetaItem : public _mtype<T>::type
     {
     public:
-        typedef typename MetaType<T>::type type;
+        typedef typename _mtype<T>::type type;
         MetaItem() : type(){}
         MetaItem(const T&v) : type(v){}
     };

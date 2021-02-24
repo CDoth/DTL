@@ -11,4 +11,7 @@
 #include "DMultiMatrix.h"
 #include "DProfiler.h"
 #include "dmem.h"
+#include "DRgbImage.h"
+#include "DTcp.h"
+
 #endif // DOTHTEMPLATELIBRARY_H
