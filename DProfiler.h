@@ -9,15 +9,15 @@
 
 namespace PROFILER {
 
-    std::map<std::string, unsigned> start;
-    void START_PBLOCK(const std::string &NAME)
+    static std::map<std::string, unsigned> start;
+    static void START_PBLOCK(const std::string &NAME)
     {
         unsigned start_time = clock();
         start[NAME] = start_time;
         std::cout << "---------- START BLOCK " << NAME.c_str() << "on:" << start_time <<std::endl;
 //        qDebug()<<"---------- START BLOCK "<<NAME.c_str()<<"on:"<<start_time;
     }
-    void END_PBLOCK(const std::string &NAME)
+    static void END_PBLOCK(const std::string &NAME)
     {
         unsigned end_time = clock();
         std::cout << "---------- END BLOCK" << NAME.c_str() << "on:" << end_time << "INTERVAL:" << end_time - start[NAME] <<std::endl;
@@ -30,9 +30,9 @@ namespace PROFILER {
         int n_name;
         std::string s_name;
     }tp;
-    std::vector<tp> time_points;
+    static std::vector<tp> time_points;
 
-    int find_tp(int name)
+    static int find_tp(int name)
     {
         int n = 0;
         for(auto it: time_points)
@@ -43,7 +43,7 @@ namespace PROFILER {
         }
         return -1;
     }
-    int find_tp(const char* name)
+    static int find_tp(const char* name)
     {
         int n = 0;
         for(auto it: time_points)
@@ -54,14 +54,14 @@ namespace PROFILER {
         }
         return -1;
     }
-    void time_point(const char* name)
+    static void time_point(const char* name)
     {
         struct timeval t;
         gettimeofday(&t, nullptr);
         if(int n = find_tp(name) < 0) time_points.push_back( tp{t, 0, name} );
         else time_points[n].t = t;
     }
-    void time_point(int name)
+    static void time_point(int name)
     {
         struct timeval t;
         gettimeofday(&t, nullptr);
@@ -96,7 +96,7 @@ namespace PROFILER {
             std::cout << "TIME (" << name1 << "-" << name2 << "):" << sec << "s" << usec << "us" <<std::endl;
 //            qDebug()<<"TIME ("<<name1<<"-"<<name2<<"):"<<sec<<"s"<<usec<<"us";
     }
-    void print_all_tp_ranges()
+    static void print_all_tp_ranges()
     {
         tp* t1 = nullptr;
         tp* t2 = nullptr;
@@ -107,7 +107,7 @@ namespace PROFILER {
             t1 = &it;
         }
     }
-    void clear_time_points()
+    static void clear_time_points()
     {
         time_points.clear();
     }

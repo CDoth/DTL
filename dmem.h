@@ -4,7 +4,7 @@
 #include <string>
 
 #include "QDebug"
-unsigned int __dmem_alloced = 0;
+static unsigned int __dmem_alloced = 0;
 #define NOT_FREE_DMEM __dmem_alloced
 struct inc_alloced {~inc_alloced(){++__dmem_alloced;}};
 struct inc_realloced{void* p;

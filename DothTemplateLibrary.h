@@ -13,5 +13,8 @@
 #include "dmem.h"
 #include "DRgbImage.h"
 #include "DTcp.h"
+#include "daran.h"
+#include "DDirReader.h"
+#include "DThreadHandler.h"
 
 #endif // DOTHTEMPLATELIBRARY_H

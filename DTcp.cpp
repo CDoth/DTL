@@ -22,7 +22,7 @@ int DTcp::smart_recv(SOCKET s, void *data, const int &len)
     }while(tb < len);
     return tb;
 }
-int DTcp::smart_recv_packet(SOCKET s, void *data, int &len)
+int DTcp::smart_recv_packet(SOCKET s, void* data, int &len)
 {
     char *d = (char*)data;
     int tb = 0;
@@ -36,7 +36,10 @@ int DTcp::smart_recv_packet(SOCKET s, void *data, int &len)
         if( recv_bytes > 0)
             tb += recv_bytes;
         else
+        {
+            std::cout << "------------------ 1 RECV FAULT " << recv_bytes << std::endl;
             return recv_bytes;
+        }
     }while(tb < 4);
     tb=0;
     recv_bytes=0;
@@ -47,11 +50,15 @@ int DTcp::smart_recv_packet(SOCKET s, void *data, int &len)
         if( recv_bytes > 0)
             tb += recv_bytes;
         else
+        {
+            std::cout << "------------------ 2 RECV FAULT " << recv_bytes << std::endl;
             return recv_bytes;
+        }
     }while(tb < packet_size);
 
-    len = packet_size;
+//    std::cout << "smart receive packet. bytes: " << recv_bytes << std::endl;
 
+    len = packet_size;
     return tb;
 }
 int DTcp::set_in(const int &port, const char *address)
@@ -91,12 +98,12 @@ int DTcp::set_out(const int &port, const char *address)
 
 void DTcp::local_error(const char *message, const int &error_code)
 {
-    if(error_code) std::cout << message << error_code << std::endl;
+    if(error_code) std::cout << message << " " << error_code << std::endl;
     else std::cout << message <<std::endl;
 }
 void DTcp::func_error(const char *func_name, const char *message, const int &error_code)
 {
-    if(error_code) std::cout << "Error in "<<func_name<<": "<<message<<error_code<<std::endl;
+    if(error_code) std::cout << "Error in "<<func_name<<": "<<message<<" "<<error_code<<std::endl;
     else std::cout << "Error in " << func_name << ": " << message<< std::endl;
 }
 void DTcp::info(const char *message)
@@ -233,8 +240,8 @@ void DTcp::unblock_out()
 
 int DTcp::make_server(const int &port, const char *address)
 {
-    stop_in();
-    stop_out();
+//    stop_in();
+//    stop_out();
     if( set_in(port, address)) return -1;
     if( (_socket_in = __socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET ) return -1;
     if( __bind(_socket_in, (sockaddr* ) &_addr_inner, sizeof (_addr_inner)) ) return -1;
@@ -244,11 +251,12 @@ int DTcp::make_server(const int &port, const char *address)
 }
 int DTcp::make_client(const int &port, const char *address)
 {
-    stop_in();
-    stop_out();
+//    stop_in();
+//    stop_out();
     if( set_out(port, address) ) return -1;
     if( (_socket_out = socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET) return -1;
     _me = Client;
+    info("Set Client");
     return 0;
 }
 int DTcp::wait_connection()
@@ -289,9 +297,8 @@ int DTcp::receive_to(void* data, int len)
 {
     return smart_recv(_socket_out, data, len);
 }
-int DTcp::receive_packet(void *data, int& len)
+int DTcp::receive_packet(void* data, int& len)
 {
-    int rb = 0;
 //    int packet_size = 0;
 //    rb = receive_to(&packet_size, 4); //receive packet size
 
@@ -309,9 +316,7 @@ int DTcp::receive_packet(void *data, int& len)
 //        len = 0;
 //        return rb;
 //    }
-
-    rb = smart_recv_packet(_socket_out, data, len);
-    return rb;
+    return smart_recv_packet(_socket_out, data, len);
 }
 int DTcp::send_packet(void *data, const int &len)
 {

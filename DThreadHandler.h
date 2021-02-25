@@ -10,6 +10,10 @@ class DThreadHandler
 {
 public:
     DThreadHandler(){}
+    DThreadHandler(const DThreadHandler&)
+    {
+
+    }
     ~DThreadHandler(){}
     struct base_o
     {

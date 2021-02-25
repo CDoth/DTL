@@ -6,8 +6,7 @@
 
 
 enum _dholder_modes { ShareNowMode = 0b00000101, ShareMode = 0b00000001, CloneMode = 0b00000010, ConstMode = 0b10000000, ConstShareMode = 0b10000001, ConstCloneMode = 0b10000010};
-bool check_mode(uint8_t m1, uint8_t m2) {return m1 & m2;}
-uint8_t disconst(uint8_t m) {return m & 0b01111111;}
+static bool check_mode(uint8_t m1, uint8_t m2) {return m1 & m2;}
 
 class DHolderStandartModule
 {

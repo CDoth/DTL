@@ -4,6 +4,12 @@
 
 #include <winsock2.h>
 #include <windows.h>
+
+static void winsock_start()
+{
+    char buff[1024];
+    WSAStartup(0x202,(WSADATA *)&buff[0]);
+}
 class DTcp
 {
 public:
