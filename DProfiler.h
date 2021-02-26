@@ -90,7 +90,7 @@ namespace PROFILER {
         int usec = dif - sec*1000000L;
 
         if(custom_message)
-            std::cout << custom_message << sec << "s" << usec << "us" << std::endl;
+            std::cout << custom_message << " " << sec << " s " << usec << " us" << std::endl;
 //            qDebug()<<custom_message<<sec<<"s"<<usec<<"us";
         else
             std::cout << "TIME (" << name1 << "-" << name2 << "):" << sec << "s" << usec << "us" <<std::endl;

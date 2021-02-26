@@ -1,12 +1,13 @@
 #include "DTcp.h"
 #include <iostream>
+#include <QDebug>
 
 #define LOCAL_ERROR(message, ec) DTcp::local_error(message, ec)
 #define FUNC_ERROR(message, ec) DTcp::func_error(__func__, message, ec)
 #define WSAE WSAGetLastError()
 
 
-int DTcp::smart_recv(SOCKET s, void *data, const int &len)
+int DTcp::smart_recv(SOCKET s, void *data, int len)
 {
     char *d = (char*)data;
     int tb = 0;
@@ -16,9 +17,15 @@ int DTcp::smart_recv(SOCKET s, void *data, const int &len)
     {
         recv_bytes = recv(s, d + tb, len - tb, 0);
         if( recv_bytes > 0)
+        {
+//            qDebug()<<"smart receive:"<<recv_bytes<<"total:"<<tb;
             tb += recv_bytes;
+        }
         else
-            return recv_bytes;
+        {
+//            qDebug()<<"smart receive: fault:"<<recv_bytes;
+            return tb;
+        }
     }while(tb < len);
     return tb;
 }
@@ -30,14 +37,18 @@ int DTcp::smart_recv_packet(SOCKET s, void* data, int &len)
     int packet_size = 0;
     len = 0;
     char* ps = (char*)&packet_size;
+    double progress = 0.0;
     do
     {
         recv_bytes = recv(s, ps + tb, 4 - tb, 0);
         if( recv_bytes > 0)
+        {
+            qDebug() << "block 1: recv bytes:"<<recv_bytes;
             tb += recv_bytes;
+        }
         else
         {
-            std::cout << "------------------ 1 RECV FAULT " << recv_bytes << std::endl;
+            qDebug() << "block 1: recv fault";
             return recv_bytes;
         }
     }while(tb < 4);
@@ -48,15 +59,18 @@ int DTcp::smart_recv_packet(SOCKET s, void* data, int &len)
     {
         recv_bytes = recv(s, d + tb, packet_size - tb, 0);
         if( recv_bytes > 0)
+        {
+            progress = (double)recv_bytes * 100.0 / (double)packet_size;
+            qDebug() << "block 2: recv bytes: " << recv_bytes << progress << '%';
             tb += recv_bytes;
+        }
         else
         {
-            std::cout << "------------------ 2 RECV FAULT " << recv_bytes << std::endl;
+            qDebug() << "block 2: fail";
             return recv_bytes;
         }
     }while(tb < packet_size);
 
-//    std::cout << "smart receive packet. bytes: " << recv_bytes << std::endl;
 
     len = packet_size;
     return tb;
@@ -193,8 +207,18 @@ int DTcp::__connect(SOCKET s, const sockaddr *name, const int &namelen)
     }
     if(connect(s, name, namelen) == SOCKET_ERROR)
     {
-        FUNC_ERROR("connect() fault", WSAE);
-        return SOCKET_ERROR;
+
+        while(WSAE == WSAEWOULDBLOCK)
+        {
+            qDebug()<<"TRY CONNECT AFTER WSAEWOULDBLOCK";
+            connect(s, name, namelen);
+        }
+        qDebug()<<"WSA Error:"<<WSAE;
+        return WSAE;
+
+//        FUNC_ERROR("connect() fault", WSAE);
+//        qDebug()<<"errno:"<<errno;
+//        return SOCKET_ERROR;
     }
     return 0;
 }
@@ -316,7 +340,10 @@ int DTcp::receive_packet(void* data, int& len)
 //        len = 0;
 //        return rb;
 //    }
-    return smart_recv_packet(_socket_out, data, len);
+    int rb = smart_recv_packet(_socket_out, data, len);
+//    while(smart_recv_packet(_socket_out, data, len) < 0)
+//        qDebug()<<"WSA Error in receive_packet():"<<WSAE<<errno;
+    return rb;
 }
 int DTcp::send_packet(void *data, const int &len)
 {

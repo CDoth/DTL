@@ -43,7 +43,7 @@ public:
     int stop_in();
     int stop_out();
 private:
-    int smart_recv(SOCKET s, void *data, const int& len);
+    int smart_recv(SOCKET s, void *data, int len);
     int smart_recv_packet(SOCKET s, void* data, int& len);
 
     int set_in(const int& port, const char* address  = nullptr);
