@@ -39,7 +39,7 @@ public:
     int stop_in();
     int stop_out();
 
-    int unlocked_recv_packet(void* data, int *packet_size, int flag1 = 0, int flag2 = 0);
+    int unlocked_recv_packet(void* data, int *packet_size, int recv_lim = 0, int flag1 = 0, int flag2 = 0);
     inline int locked_recv_packet(void* data, int flag1 = 0, int flag2 = 0);
 
 private:

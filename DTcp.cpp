@@ -29,7 +29,7 @@ int DTcp::smart_recv(SOCKET s, void *data, int len)
     }while(tb < len);
     return tb;
 }
-int DTcp::unlocked_recv_packet(void* data, int* packet_size, int flag1, int flag2)
+int DTcp::unlocked_recv_packet(void* data, int* packet_size, int recv_lim, int flag1, int flag2)
 {
     int rb = 0;
     if(p.ps_rb < (int)sizeof(int))
@@ -39,15 +39,16 @@ int DTcp::unlocked_recv_packet(void* data, int* packet_size, int flag1, int flag
         else return 0;
         if(packet_size) *packet_size = p.packet_size;
     }
+    int should_receive = recv_lim? recv_lim : p.packet_size;
     if(p.ps_rb >= (int)sizeof(int))
     {
-        rb = recv(_socket_out, (char*)data + p.total_rb, p.packet_size - p.total_rb, flag2);
+        rb = recv(_socket_out, (char*)data + p.total_rb, should_receive - p.total_rb, flag2);
         if(rb > 0) p.total_rb += rb;
         else return p.total_rb;
     }
-    if(p.packet_size > 0 && p.total_rb >= p.packet_size)
+    if(should_receive && p.total_rb >= should_receive)
     {
-        int t =  p.packet_size;
+        int t =  should_receive;
         p.packet_size = 0;
         p.total_rb = 0;
         p.ps_rb = 0;
