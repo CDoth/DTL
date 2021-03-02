@@ -79,7 +79,7 @@ public:
     struct const_complex_iterator
     {
         const_complex_iterator() : p(nullptr){}
-        const_complex_iterator(T** _p) : p(_p){}
+        const_complex_iterator(T*const* _p) : p(_p){}
         inline const T& operator*() const {return **p;}
         inline const T* operator->() const {return *p;}
         inline const_complex_iterator& operator++(){++p; return *this;}
@@ -90,7 +90,7 @@ public:
         inline  bool operator!=(const const_complex_iterator& it) const noexcept { return p!=it.p;}
         inline const_complex_iterator operator+(int i) const {return const_complex_iterator(p+i);}
         inline const_complex_iterator operator-(int i) const {return const_complex_iterator(p-i);}
-        T** p;
+        T*const* p;
     };
 
 
