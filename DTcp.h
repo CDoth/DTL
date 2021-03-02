@@ -4,6 +4,7 @@
 
 #include <winsock2.h>
 #include <windows.h>
+#include <stdint.h>
 
 static void winsock_start()
 {
@@ -27,23 +28,27 @@ public:
     int wait_connection();
     int try_connect();
 
-    int receive_to(void* data, int len);
-    inline int send_it(const void* data, int len, int flag = 0);
-
+    int send_it(const void* data, int len, int flag = 0);
+    int unlocked_send_it(const void* data, int len, int flag = 0);
     int send_packet(const void* data, int len, int flag1 = 0, int flag2 = 0);
+    int unlocked_send_packet(const void* data, int len, int flag1 = 0, int flag2 = 0);
+
+
+    int receive_to(void* data, int len, int flag = 0);
+    int unlocked_recv_to(void* data, int len, int flag = 0);
+    int recv_packet(void* data, int flag1 = 0, int flag2 = 0);
+    int unlocked_recv_packet(void* data, int *packet_size, int recv_lim = 0, int flag1 = 0, int flag2 = 0);
+
+
+
+
+
 
     int check_readability(int sec = 0, int usec = 0);
     int check_writability(int sec = 0, int usec = 0);
-
-
     int stop_in();
     int stop_out();
-
-    int unlocked_recv_packet(void* data, int *packet_size, int recv_lim = 0, int flag1 = 0, int flag2 = 0);
-    inline int locked_recv_packet(void* data, int flag1 = 0, int flag2 = 0);
-
 private:
-    int smart_recv(SOCKET s, void* data, int len);
 
 
     int set_in(const int& port, const char* address  = nullptr);
@@ -70,15 +75,22 @@ private:
 
     state _me;
 
-    struct packet_info
+    struct packet_recv_info
     {
         int total_rb;
-
         int packet_size;
         int ps_rb;
     };
+    struct packet_send_info
+    {
+        int total_sb;
+        int ps_sb;
+    };
 
-    packet_info p;
+    packet_recv_info pr;
+    packet_send_info ps;
+
+    uint8_t signal;
 };
 
 #endif // DTCP_H

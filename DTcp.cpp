@@ -7,56 +7,49 @@
 #define WSAE WSAGetLastError()
 
 
-int DTcp::smart_recv(SOCKET s, void *data, int len)
+int DTcp::receive_to(void* data, int len, int flag)
 {
-    char *d = (char*)data;
     int tb = 0;
-    int recv_bytes = 0;
-
+    int rb = 0;
     do
     {
-        recv_bytes = recv(s, d + tb, len - tb, 0);
-        if( recv_bytes > 0)
-        {
-//            qDebug()<<"smart receive:"<<recv_bytes<<"total:"<<tb;
-            tb += recv_bytes;
-        }
-        else
-        {
-//            qDebug()<<"smart receive: fault:"<<recv_bytes;
-            return tb;
-        }
+        rb = recv(_socket_out, (char*)data + tb, len - tb, flag);
+        if( rb > 0 ) tb += rb;
+        else return tb;
+
     }while(tb < len);
     return tb;
 }
-int DTcp::unlocked_recv_packet(void* data, int* packet_size, int recv_lim, int flag1, int flag2)
+int DTcp::send_it(const void* data, int len, int flag)
+{
+    int sb = 0;
+    if(  (sb = send(_socket_out, (const char*)data, len, flag)) < 0)
+    {
+        qDebug()<<"send() error"<<sb<<WSAE<<errno;
+//        while(WSAE == WSAEWOULDBLOCK)
+//            sb = send(_socket_out, (char*)data, len, flag);
+    }
+    return sb;
+}
+int DTcp::unlocked_recv_to(void* data, int len, int flag)
 {
     int rb = 0;
-    if(p.ps_rb < (int)sizeof(int))
-    {
-        rb = recv(_socket_out, (char*)&p.packet_size + p.ps_rb, sizeof(int) - p.ps_rb, flag1);
-        if(rb > 0) p.ps_rb += rb;
-        else return 0;
-        if(packet_size) *packet_size = p.packet_size;
-    }
-    int should_receive = recv_lim? recv_lim : p.packet_size;
-    if(p.ps_rb >= (int)sizeof(int))
-    {
-        rb = recv(_socket_out, (char*)data + p.total_rb, should_receive - p.total_rb, flag2);
-        if(rb > 0) p.total_rb += rb;
-        else return p.total_rb;
-    }
-    if(should_receive && p.total_rb >= should_receive)
-    {
-        int t =  should_receive;
-        p.packet_size = 0;
-        p.total_rb = 0;
-        p.ps_rb = 0;
-        return t;
-    }
-    return p.total_rb;
+    rb = recv(_socket_out, (char*)data + pr.total_rb, len - pr.total_rb, flag);
+    if(rb > 0) pr.total_rb += rb;
+    else return pr.total_rb;
+    if(pr.total_rb >= len) pr.total_rb = 0;
+    return pr.total_rb;
 }
-inline int DTcp::locked_recv_packet(void* data, int flag1, int flag2)
+int DTcp::unlocked_send_it(const void *data, int len, int flag)
+{
+    int sb = 0;
+    sb = send(_socket_out, (const char*)data + ps.total_sb, len - ps.total_sb, flag);
+    if(sb > 0) ps.total_sb += sb;
+    else return ps.total_sb;
+    if(ps.total_sb >= len) ps.total_sb = 0;
+    return ps.total_sb;
+}
+int DTcp::recv_packet(void* data, int flag1, int flag2)
 {
     int rb = 0;
     int tb = 0;
@@ -78,6 +71,72 @@ inline int DTcp::locked_recv_packet(void* data, int flag1, int flag2)
 
     return tb;
 }
+int DTcp::send_packet(const void* data, int len, int flag1, int flag2)
+{
+    int sb = 0;
+    if( (sb = send_it((const char*)&len, (int)sizeof(int), flag1)) < 0)
+    {
+        FUNC_ERROR("send_it() fault (packet size)", WSAE);
+        return sb;
+    }
+    if( (sb = send_it((const char*)data, len, flag2)) < 0)
+    {
+        FUNC_ERROR("send_it() fault (data)", WSAE);
+        return sb;
+    }
+    return sb;
+}
+int DTcp::unlocked_recv_packet(void* data, int* packet_size, int recv_lim, int flag1, int flag2)
+{
+    int rb = 0;
+    if(pr.ps_rb < (int)sizeof(int))
+    {
+        rb = recv(_socket_out, (char*)&pr.packet_size + pr.ps_rb, sizeof(int) - pr.ps_rb, flag1);
+        if(rb > 0) pr.ps_rb += rb;
+        else return 0;
+        if(packet_size) *packet_size = pr.packet_size;
+    }
+    int should_receive = recv_lim? recv_lim : pr.packet_size;
+    if(pr.ps_rb >= (int)sizeof(int))
+    {
+        rb = recv(_socket_out, (char*)data + pr.total_rb, should_receive - pr.total_rb, flag2);
+        if(rb > 0) pr.total_rb += rb;
+        else return pr.total_rb;
+    }
+    if(should_receive && pr.total_rb >= should_receive)
+    {
+        int t =  should_receive;
+        pr.packet_size = 0;
+        pr.total_rb = 0;
+        pr.ps_rb = 0;
+        return t;
+    }
+    return pr.total_rb;
+}
+int DTcp::unlocked_send_packet(const void* data, int len, int flag1, int flag2)
+{
+    int sb = 0;
+    if(ps.ps_sb < (int)sizeof(int))
+    {
+        sb = send(_socket_out, (const char*)&len, sizeof(int) - ps.ps_sb, flag1);
+        if(sb > 0) ps.ps_sb += sb;
+        else return 0;
+    }
+    if(ps.ps_sb >= (int)sizeof(int))
+    {
+        sb = send(_socket_out, (const char*)data + ps.total_sb, len - ps.total_sb, flag2);
+        if(sb > 0) ps.total_sb += sb;
+        else return ps.total_sb;
+    }
+    if(ps.total_sb >= len)
+    {
+        ps.total_sb = 0;
+        ps.ps_sb = 0;
+        return len;
+    }
+    return ps.total_sb;
+}
+
 int DTcp::set_in(const int &port, const char *address)
 {
     if(port >= 0 && port <= 65535)
@@ -241,7 +300,6 @@ int DTcp::__shutdown(SOCKET s, int how)
     return 0;
 }
 //---------------------------------------------------------------------------------------
-
 DTcp::DTcp()
 {
     _me = Default;
@@ -253,11 +311,13 @@ DTcp::DTcp()
     _socket_in = INVALID_SOCKET;
     _socket_out = INVALID_SOCKET;
 
-    p.packet_size = 0;
-    p.total_rb = 0;
-    p.ps_rb = 0;
-}
+    pr.packet_size = 0;
+    pr.total_rb = 0;
+    pr.ps_rb = 0;
 
+    ps.total_sb = 0;
+    ps.ps_sb = 0;
+}
 void DTcp::unblock_in()
 {
     BOOL l = TRUE;
@@ -268,7 +328,6 @@ void DTcp::unblock_out()
     BOOL l = TRUE;
     ioctlsocket(_socket_out, FIONBIO, (unsigned long* ) &l);
 }
-
 int DTcp::make_server(int port, const char *address)
 {
 //    stop_in();
@@ -320,30 +379,6 @@ int DTcp::try_connect()
     info("connected");
     return 0;
 }
-inline int DTcp::send_it(const void* data, int len, int flag)
-{
-    return send(_socket_out, (char*)data, len, flag);
-}
-int DTcp::receive_to(void* data, int len)
-{
-    return smart_recv(_socket_out, data, len);
-}
-int DTcp::send_packet(const void* data, int len, int flag1, int flag2)
-{
-    int sb = 0;
-    if( (sb = send_it((const char*)&len, (int)sizeof(int), flag1)) <= 0)
-    {
-        FUNC_ERROR("send_it() fault (packet size)", 0);
-        return sb;
-    }
-    if( (sb = send_it((const char*)data, len, flag2)) <= 0)
-    {
-        FUNC_ERROR("send_it() fault (data)", 0);
-        return sb;
-    }
-    return sb;
-}
-
 int DTcp::check_readability(int sec, int usec)
 {
     if(!is_valid_socket(_socket_out))
