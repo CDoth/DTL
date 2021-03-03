@@ -80,6 +80,7 @@ public:
     {
         const_complex_iterator() : p(nullptr){}
         const_complex_iterator(T*const* _p) : p(_p){}
+        inline  operator T*const*() {return p;}
         inline const T& operator*() const {return **p;}
         inline const T* operator->() const {return *p;}
         inline const_complex_iterator& operator++(){++p; return *this;}
@@ -96,8 +97,13 @@ public:
 
     iterator begin() { return data()->t();}
     iterator end() {return data()->t() + data()->size;}
+    iterator first() {return begin();}
+    iterator last(){return data()->t() + data()->size - 1;}
+
     const_iterator constBegin() const {return data()->t();}
     const_iterator constEnd() const {return data()->t() + data()->size;}
+    const_iterator constFirst() const {return begin();}
+    const_iterator constLast() const {return data()->t() + data()->size - 1;}
 //-------------------------------------------------------------------------------------------
 public:
     void setMode(WatcherMode m)
@@ -119,8 +125,8 @@ public:
     int cell_size() const {return sizeof(stored_type);}
     int reserved() const {return data()->alloc;}
     bool empty() const {return !data()->size;}
-    const T& constFirst() const {return _get_ref(0);}
-    const T& constLast() const {return _get_ref(data()->size-1);}
+    const T& constFront() const {return _get_ref(0);}
+    const T& constBack() const {return _get_ref(data()->size-1);}
     const T& operator[](int i) const {return _get_ref(i);}
 
     void append(){detach();   _push(data()->_get_place(), __metatype());}
@@ -130,8 +136,8 @@ public:
     void remove(int i) {detach(); _remove(i, __metatype());}
     T& operator[](int i) {detach(); return _get_ref(i, __metatype());}
     void clear() {detach(); *this = DArray();}
-    T& first() {detach(); return _get_ref(0);}
-    T& last() {detach(); return _get_ref(data()->size-1);}
+    T& front() {detach(); return _get_ref(0);}
+    T& back() {detach(); return _get_ref(data()->size-1);}
     void push_back(const T& v) {detach(); append(v);}
     void replace(int i, const T& v) {if(i >= 0 && i < data()->size){detach(); _get_ref(i, __metatype()) = v;}}
 

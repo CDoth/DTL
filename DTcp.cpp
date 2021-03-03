@@ -44,9 +44,9 @@ int DTcp::unlocked_send_it(const void *data, int len, int flag)
 {
     int sb = 0;
     sb = send(_socket_out, (const char*)data + ps.total_sb, len - ps.total_sb, flag);
-    if(sb > 0) ps.total_sb += sb;
-    else return ps.total_sb;
-    if(ps.total_sb >= len) ps.total_sb = 0;
+    if(sb >= 0) ps.total_sb += sb;
+    else return sb;
+    if(ps.total_sb >= len) {int temp = ps.total_sb; ps.total_sb = 0; return temp;}
     return ps.total_sb;
 }
 int DTcp::recv_packet(void* data, int flag1, int flag2)
@@ -119,14 +119,14 @@ int DTcp::unlocked_send_packet(const void* data, int len, int flag1, int flag2)
     if(ps.ps_sb < (int)sizeof(int))
     {
         sb = send(_socket_out, (const char*)&len, sizeof(int) - ps.ps_sb, flag1);
-        if(sb > 0) ps.ps_sb += sb;
-        else return 0;
+        if(sb >= 0) ps.ps_sb += sb;
+        else return sb;
     }
     if(ps.ps_sb >= (int)sizeof(int))
     {
         sb = send(_socket_out, (const char*)data + ps.total_sb, len - ps.total_sb, flag2);
-        if(sb > 0) ps.total_sb += sb;
-        else return ps.total_sb;
+        if(sb >= 0) ps.total_sb += sb;
+        else return sb;
     }
     if(ps.total_sb >= len)
     {
