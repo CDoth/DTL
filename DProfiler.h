@@ -32,6 +32,22 @@ namespace PROFILER {
     }tp;
     static std::vector<tp> time_points;
 
+    int sec_dif(timeval* t1, timeval* t2)
+    {
+        int dif = (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
+        return (int)(dif/1000000L);
+    }
+    int usec_dif(timeval* t1, timeval* t2)
+    {
+        return (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
+    }
+    timeval time_dif(timeval* t1, timeval* t2)
+    {
+        int dif = (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
+        int sec = (int)(dif/1000000L);
+        int usec = dif - sec*1000000L;
+        return {sec, usec};
+    }
     static int find_tp(int name)
     {
         int n = 0;
