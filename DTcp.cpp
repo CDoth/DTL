@@ -35,15 +35,16 @@ int DTcp::unlocked_recv_to(void* data, int len, int flag)
 {
     int rb = 0;
     rb = recv(_socket_out, (char*)data + pr.total_rb, len - pr.total_rb, flag);
-    if(rb > 0) pr.total_rb += rb;
-    else return pr.total_rb;
-    if(pr.total_rb >= len) pr.total_rb = 0;
+    if(rb >= 0) pr.total_rb += rb;
+    else return rb;
+    if(pr.total_rb >= len) {int temp = pr.total_rb; pr.total_rb = 0; return temp;}
     return pr.total_rb;
 }
 int DTcp::unlocked_send_it(const void *data, int len, int flag)
 {
     int sb = 0;
     sb = send(_socket_out, (const char*)data + ps.total_sb, len - ps.total_sb, flag);
+
     if(sb >= 0) ps.total_sb += sb;
     else return sb;
     if(ps.total_sb >= len) {int temp = ps.total_sb; ps.total_sb = 0; return temp;}
