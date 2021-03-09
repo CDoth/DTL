@@ -17,9 +17,9 @@
 #define FM_DEFAULT_DOWNLOAD_PATH "C://LOAD//"
 #define FM_NEW_DATA_BYTE 0b10000000
 #define FM_DISCONNECT_BYTE 0b01000000
-enum header_type {NewFileInSystem = 9009, File = 1001, MultiFiles = 1011, FileRequest = 2002, MultiFilesRequest = 2012, TableRequest = 3003, Message = 4004, NoType = 0};
+enum header_type {Table = 9009, File = 1001, MultiFiles = 1011, FileRequest = 2002, MultiFilesRequest = 2012, TableRequest = 3003, Message = 4004, NoType = 0};
 
-/*
+
 class FileMover
 {
 public:
@@ -386,9 +386,7 @@ public:
                         if(rtype == NoType)
                         {
                             rb = fm->control.receive_to(&rtype, sizeof(header_type));
-                            qDebug()<<"try read rtype:"<<rtype<<rb;
                         }
-//                        qDebug()<<"try read new data. type:"<<rtype;
                         switch(rtype)
                         {
                         case Table:
@@ -1145,8 +1143,9 @@ public:
 //v 1.5.0
 };
 
-*/
 
+
+/*
 class FileMover
 {
 public:
@@ -1165,7 +1164,6 @@ public:
 public:
     DTcp control;
     bool connection_status;
-    std::mutex mu;
 
     const int system_index_shift = 10;
     //----------------------------------
@@ -1290,10 +1288,6 @@ public:
     {
         int begin;
         int size;
-    };
-    struct mfiles_data
-    {
-        DArray<int> files;
     };
 
 
@@ -1509,46 +1503,8 @@ public:
                         {
                         case NewFileInSystem:
                         {
-                            fm->mu.lock();
-                            if(!table_size)
-                            {
-                                rb = fm->control.receive_to(&table_size, sizeof(int));
-                            }
-                            else
-                            {
-                                rb = fm->control.unlocked_recv_packet(fm->string_buffer.data, &packet_size);
-                            }
 
-                            if(packet_size && rb == packet_size)
-                            {
-                                if(table_item_packet)
-                                {
-                                    fm->out_table.back()->shortSize = fm->string_buffer.data;
-                                    --table_item_packet;
-                                    ++table_packets_recv;
-                                    packet_size = 0;
-                                }
-                                else
-                                {
-                                    file_info* item = new file_info;
-                                    item->name = fm->string_buffer.data;
-                                    fm->out_table.push_back(item);
-                                    ++table_item_packet;
-                                    ++table_packets_recv;
-                                    packet_size = 0;
-                                }
-                            }
-                            if(table_size && table_packets_recv == table_size)
-                            {
-                                main_byte = 0;
-                                rtype = NoType;
-                                packet_size = 0;
-                                table_packets_recv = 0;
-                                table_item_packet = 0;
-                                table_size = 0;
-                                fm->print_out_table();
-                            }
-                            fm->mu.unlock();
+                            // ------------------------------- ?????????????
                             break;
                         }
                         case Message:
@@ -1565,16 +1521,14 @@ public:
                         }
                         case File:
                         {
-
                             file_recv_handler* h = fm->alloc_recv_handler();
                             while( fm->control.receive_to(&h->index, sizeof(int)) <= 0 ){}
-                            h->f = fm->out_table[h->index];
+                            fm->recv_map[h->index] = h;
                             while( fm->control.receive_to(&h->f->size, sizeof(size_t)) <= 0 ){}
                             while( fm->control.receive_to(&h->packet_size, sizeof(int)) <= 0 ){}
-                            while( fm->control.receive_to(&h->multisending_index, 1) <= 0 ){}
 
-                            qDebug()<<"receive file header"<<"index:"<<h->index<<"size:"<<h->f->size<<"ms index:"<<h->multisending_index<<
-                                      "path:"<<h->f->path.c_str()<<"out table size:"<<fm->out_table.size();
+                            qDebug()<<"receive file header"<<"index:"<<h->index<<"size:"<<h->f->size<<"ms index:"<<h->index<<
+                                      "path:"<<h->f->path.c_str();
 
                             gettimeofday(&h->start, nullptr);
                             h->f->file = fopen(h->f->path.c_str(), "wb");
@@ -1587,7 +1541,6 @@ public:
 
                             h->read_for_packet = 0;
                             h->read_now = (size_t)h->packet_size < fm->recv_buffer.size ? h->packet_size : fm->recv_buffer.size;
-                            fm->recv_files[h->multisending_index] = h;
                             rtype = NoType;
                             main_byte = 0;
                             break;
@@ -1596,13 +1549,9 @@ public:
                         {
                             int index = 0;
                             while ( fm->control.receive_to(&index, sizeof(int)) <= 0 );
-                            if(index >=0 && index < (int)fm->local_table.size())
-                            {
-                                rtype = NoType;
-                                main_byte = 0;
-                                fm->push_file(index);
-                            }
-                            else qDebug()<<"Get File Request with wrong index:"<<index;
+                            rtype = NoType;
+                            main_byte = 0;
+                            fm->push_file(index);
                             break;
                         }
                         case MultiFilesRequest:
@@ -1638,8 +1587,7 @@ public:
                     }
                     else
                     {
-//                        qDebug()<<"try read file";
-                        current_recv_file = fm->recv_files[main_byte];
+                        current_recv_file = fm->recv_map[main_byte];
                         rb = fm->control.unlocked_recv_to(fm->recv_buffer.data, current_recv_file->read_now);
                         if(rb == current_recv_file->read_now)
                         {
@@ -1664,14 +1612,13 @@ public:
                                 timeval end;
                                 gettimeofday(&end, nullptr);
                                 timeval t = PROFILER::time_dif(&current_recv_file->start, &end);
-                                qDebug()<<"recv file:"<<current_recv_file->multisending_index<<current_recv_file->f->path.c_str()
+                                qDebug()<<"recv file:"<<current_recv_file->index<<current_recv_file->f->path.c_str()
                                        <<current_recv_file->f
                                        <<current_recv_file->f->path.size()
                                        <<"time:"<<t.tv_sec<<"sec"<<t.tv_usec<<"usec";
 
                                 fclose(current_recv_file->f->file);
-                                fm->recv_files.erase(fm->recv_files.find(main_byte));
-                                fm->out_table.remove(current_recv_file->f);
+//                                fm->recv_files.erase(fm->recv_files.find(main_byte));
                                 delete current_recv_file->f;
                                 delete current_recv_file;
                                 current_recv_file = nullptr;
@@ -1712,35 +1659,6 @@ public:
                     {
                     case NewFileInSystem:
                     {
-                        if(!send_progress)
-                        {
-                            send_content.clear();
-                            send_content.push_back({&nd_byte, 1, false});
-                            send_content.push_back({&h->type, sizeof(header_type), false});
-                            for(int i=0;i!=t->size();++i)
-                            {
-                                file_info* it = t->at(i);
-                                send_content.push_back({it->name.c_str(), (int)it->name.size() + 1, true});
-                                send_content.push_back({it->shortSize.c_str(), (int)it->shortSize.size() + 1, true});
-                            }
-                            send_progress = send_content.constBegin();
-                            send_progress_end = send_content.constEnd();
-                        }
-                        while( send_progress != send_progress_end && sb >= 0 )
-                        {
-                            if((*send_progress).packet) sb = fm->control.unlocked_send_packet((*send_progress).data, (*send_progress).size);
-                            else sb = fm->control.unlocked_send_it((*send_progress).data, (*send_progress).size);
-                            if(sb == (*send_progress).size) ++send_progress;
-                        }
-                        if(send_progress == send_progress_end)
-                        {
-                            send_content.clear();
-                            fm->specific_queue.pop();
-                            send_progress = nullptr;
-                            send_progress_end = nullptr;
-                            delete (FILE_TABLE*)h->data;
-                            free_mem(h);
-                        }
                         break;
                     }
                     case TableRequest:
@@ -1812,13 +1730,11 @@ public:
                     }
 
                 }
-                if(fm->files_queue.size())
+                if(!fm->send_queue.empty())
                 {
-//                    qDebug()<<"try send file";
                     if(!current_send_file)
                     {
-//                        qDebug()<<"--- 4";
-                        current_send_file = fm->files_queue.front();
+                        current_send_file = fm->send_queue.front();
                     }
                     if(!current_send_file->bytes_left)
                     {
@@ -1838,7 +1754,6 @@ public:
                         send_content.push_back({&current_send_file->index, sizeof(int), false}); //index
                         send_content.push_back({&current_send_file->bytes_left, sizeof(size_t), false}); // file size
                         send_content.push_back({&current_send_file->flush_now, sizeof(int), false}); // packet size
-                        send_content.push_back({&current_send_file->multisending_index, 1, false}); // ms index
 
 
                         send_progress = send_content.constBegin();
@@ -1846,7 +1761,6 @@ public:
                         gettimeofday(&current_send_file->start, nullptr);
 
 //                        qDebug()<<"--- 3 INITIAL FOR FILE:"<<current_send_file->multisending_index;
-                        sb = 0;
                     }
 
                     while( send_progress != send_progress_end )
@@ -1871,7 +1785,7 @@ public:
                         if(!file_byte_sent)
                         {
 //                            qDebug()<<"send file byte"<<current_send_file->multisending_index;
-                            file_byte_sent = fm->control.send_it(&current_send_file->multisending_index, 1);
+                            file_byte_sent = fm->control.send_it(&current_send_file->index, 1);
                         }
                         if(file_byte_sent == 1)
                         {
@@ -1880,7 +1794,7 @@ public:
                             current_send_file->interuptable = false;
                             sb = fm->control.unlocked_send_it(fm->send_buffer.data, current_send_file->flush_now);
 
-                            qDebug()<<"send part of file:"<<current_send_file->multisending_index<<current_send_file->f->path.c_str()
+                            qDebug()<<"send part of file:"<<current_send_file->index<<current_send_file->f->path.c_str()
                                    <<"csf:"<<current_send_file;
 //                                   <<"file info:"<<current_send_file->f
 //                                   <<"file ptr:"<<current_send_file->f->file
@@ -1913,7 +1827,6 @@ public:
                                     qDebug()<<"sent file:"<<current_send_file->f->name.c_str()<<"time:"<<t.tv_sec<<"sec"<<t.tv_usec<<"usec";
 
                                     fclose(current_send_file->f->file);
-                                    fm->local_table.remove(current_send_file->f);
                                     delete current_send_file->f;
                                     if(current_send_file->connect_next)
                                     {
@@ -1927,40 +1840,39 @@ public:
                                             current_send_file->connect_next->connect_prev = current_send_file->connect_prev;
                                             current_send_file->connect_prev->connect_next = current_send_file->connect_next;
                                         }
-                                        fm->files_queue.front() = current_send_file->connect_next;
+                                        fm->send_queue.front() = current_send_file->connect_next;
                                     }
                                     else
                                     {
-                                        fm->files_queue.pop();
+                                        fm->send_queue.pop_front();
                                     }
                                     delete current_send_file;
                                     current_send_file = nullptr;
                                 }
 
 
-                                /*
-                                struct timeval now;
-                                gettimeofday(&now, nullptr);
-                                int us = PROFILER::usec_dif(&current_send_file->last, &now);
-                                tsb += sb;
-                                if(us >= 1000000 / speed_rate)
-                                {
-                                    double v = 0;
-                                    tsb *= speed_rate;
+//                                struct timeval now;
+//                                gettimeofday(&now, nullptr);
+//                                int us = PROFILER::usec_dif(&current_send_file->last, &now);
+//                                tsb += sb;
+//                                if(us >= 1000000 / speed_rate)
+//                                {
+//                                    double v = 0;
+//                                    tsb *= speed_rate;
 
-                                    for(;;)
-                                    {
-                                        int kb = tsb/ 1024;  tsb %= 1024; if(!kb){v = tsb; sprintf(current_send_file->speed, "%.2f bytes/s", v);  break;}
-                                        int mb = kb / 1024;    kb %= 1024;    if(!mb){v = kb + (double)tsb/1024; sprintf(current_send_file->speed, "%.2f Kb/s", v);  break;}
-                                        int gb = mb / 1024;    mb %= 1024;    if(!gb){v = mb + (double)kb/1024; sprintf(current_send_file->speed, "%.2f Mb/s", v);  break;}
-                                        int tb = gb / 1024;    gb %= 1024;    if(!tb){v = gb + (double)mb/1024; sprintf(current_send_file->speed, "%.2f Gb/s", v); break;}
-                                        v = tb + (double)gb/1024; sprintf(current_send_file->speed, "%.2f Tb", v);   break;
-                                    }
+//                                    for(;;)
+//                                    {
+//                                        int kb = tsb/ 1024;  tsb %= 1024; if(!kb){v = tsb; sprintf(current_send_file->speed, "%.2f bytes/s", v);  break;}
+//                                        int mb = kb / 1024;    kb %= 1024;    if(!mb){v = kb + (double)tsb/1024; sprintf(current_send_file->speed, "%.2f Kb/s", v);  break;}
+//                                        int gb = mb / 1024;    mb %= 1024;    if(!gb){v = mb + (double)kb/1024; sprintf(current_send_file->speed, "%.2f Mb/s", v);  break;}
+//                                        int tb = gb / 1024;    gb %= 1024;    if(!tb){v = gb + (double)mb/1024; sprintf(current_send_file->speed, "%.2f Gb/s", v); break;}
+//                                        v = tb + (double)gb/1024; sprintf(current_send_file->speed, "%.2f Tb", v);   break;
+//                                    }
 
-                                    tsb = 0;
-                                    current_send_file->last = now;
-                                }
-                                */
+//                                    tsb = 0;
+//                                    current_send_file->last = now;
+//                                }
+
 
                             }
                         }
@@ -2267,4 +2179,6 @@ public:
     }
 //v 1.5.0
 };
+*/
+
 #endif // FILEMOVER_H
