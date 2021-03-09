@@ -42,8 +42,6 @@ public:
 
 
 
-
-
     int check_readability(int sec = 0, int usec = 0);
     int check_writability(int sec = 0, int usec = 0);
     int stop_in();
@@ -89,8 +87,6 @@ private:
 
     packet_recv_info pr;
     packet_send_info ps;
-
-    uint8_t signal;
 };
 
 #endif // DTCP_H

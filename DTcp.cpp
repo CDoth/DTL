@@ -93,6 +93,7 @@ int DTcp::unlocked_recv_packet(void* data, int* packet_size, int recv_lim, int f
     if(pr.ps_rb < (int)sizeof(int))
     {
         rb = recv(_socket_out, (char*)&pr.packet_size + pr.ps_rb, sizeof(int) - pr.ps_rb, flag1);
+//        qDebug()<<"unlocked_recv_packet(): packet size rb:"<<rb;
         if(rb > 0) pr.ps_rb += rb;
         else return 0;
         if(packet_size) *packet_size = pr.packet_size;
@@ -101,6 +102,7 @@ int DTcp::unlocked_recv_packet(void* data, int* packet_size, int recv_lim, int f
     if(pr.ps_rb >= (int)sizeof(int))
     {
         rb = recv(_socket_out, (char*)data + pr.total_rb, should_receive - pr.total_rb, flag2);
+//        qDebug()<<"unlocked_recv_packet(): data rb:"<<rb;
         if(rb > 0) pr.total_rb += rb;
         else return pr.total_rb;
     }

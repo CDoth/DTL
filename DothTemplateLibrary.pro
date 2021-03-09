@@ -19,7 +19,8 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
     DDirReader.cpp \
     DLogs.cpp \
-    DTcp.cpp
+    DTcp.cpp \
+    FileMover.cpp
 
 HEADERS += \
     DArray.h \
@@ -39,6 +40,7 @@ HEADERS += \
     DThreadHandler.h \
     DWatcher.h \
     DothTemplateLibrary.h \
+    FileMover.h \
     daran.h \
     dmem.h
 

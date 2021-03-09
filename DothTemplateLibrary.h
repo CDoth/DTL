@@ -16,5 +16,6 @@
 #include "daran.h"
 #include "DDirReader.h"
 #include "DThreadHandler.h"
+#include "FileMover.h"
 
 #endif // DOTHTEMPLATELIBRARY_H

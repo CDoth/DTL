@@ -95,10 +95,10 @@ public:
     };
 
 
-    iterator begin() { return data()->t();}
-    iterator end() {return data()->t() + data()->size;}
-    iterator first() {return begin();}
-    iterator last(){return data()->t() + data()->size - 1;}
+    iterator begin() {detach(); return data()->t();}
+    iterator end() {detach(); return data()->t() + data()->size;}
+    iterator first() {detach(); return begin();}
+    iterator last(){detach(); return data()->t() + data()->size - 1;}
 
     const_iterator constBegin() const {return data()->t();}
     const_iterator constEnd() const {return data()->t() + data()->size;}
@@ -128,18 +128,31 @@ public:
     const T& constFront() const {return _get_ref(0);}
     const T& constBack() const {return _get_ref(data()->size-1);}
     const T& operator[](int i) const {return _get_ref(i);}
+    const T& at(int i) const {if(i >= 0 && i < data()->size) return _get_ref(i);}
 
     void append(){detach();   _push(data()->_get_place(), __metatype());}
     void append(const T& t) {detach();  _push(t, data()->_get_place(), __metatype());}
     void append(const T& t, int n) {detach(); while(n--) append(t);}
     void reserve(int s) {detach(); data()->_reserve(s);}
     void remove(int i) {detach(); _remove(i, __metatype());}
-    T& operator[](int i) {detach(); return _get_ref(i, __metatype());}
+    void remove(const T& v)
+    {
+        detach();
+        auto b = constBegin();
+        auto e = constEnd();
+        int i=0;
+        while( b != e )
+        {
+            if( *b++ == v ) _remove(i, __metatype()); ++i;
+        }
+    }
+    T& at(int i) {detach(); if(i >= 0 && i < data()->size) return _get_ref(i);}
+    T& operator[](int i) {detach(); return _get_ref(i);}
     void clear() {detach(); *this = DArray();}
     T& front() {detach(); return _get_ref(0);}
     T& back() {detach(); return _get_ref(data()->size-1);}
     void push_back(const T& v) {detach(); append(v);}
-    void replace(int i, const T& v) {if(i >= 0 && i < data()->size){detach(); _get_ref(i, __metatype()) = v;}}
+    void replace(int i, const T& v) {if(i >= 0 && i < data()->size){detach(); _get_ref(i) = v;}}
 
     void swap(DArray<T>& with){std::swap(w, with.w);}
 private:

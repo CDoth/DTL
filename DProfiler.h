@@ -32,6 +32,11 @@ namespace PROFILER {
     }tp;
     static std::vector<tp> time_points;
 
+    double fsec_dif(timeval* t1, timeval* t2)
+    {
+        double dif = (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
+        return (dif/1000000.0);
+    }
     int sec_dif(timeval* t1, timeval* t2)
     {
         int dif = (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
