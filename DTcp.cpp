@@ -35,9 +35,10 @@ int DTcp::unlocked_recv_to(void* data, int len, int flag)
 {
     int rb = 0;
     rb = recv(_socket_out, (char*)data + pr.total_rb, len - pr.total_rb, flag);
+//    qDebug()<<"unlocked_recv_to():"<<rb<<*(int*)data;
     if(rb >= 0) pr.total_rb += rb;
     else return rb;
-    if(pr.total_rb >= len) {int temp = pr.total_rb; pr.total_rb = 0; return temp;}
+    if(pr.total_rb == len) {int temp = pr.total_rb; pr.total_rb = 0; return temp;}
     return pr.total_rb;
 }
 int DTcp::unlocked_send_it(const void *data, int len, int flag)
@@ -66,6 +67,7 @@ int DTcp::recv_packet(void* data, int flag1, int flag2)
     do
     {
         rb = recv(_socket_out, d + tb, packet_size - tb, flag2);
+        qDebug()<<"recv_packet:"<<rb;
         if( rb > 0) tb += rb;
         else return tb;
     }while(tb < packet_size);
@@ -93,7 +95,6 @@ int DTcp::unlocked_recv_packet(void* data, int* packet_size, int recv_lim, int f
     if(pr.ps_rb < (int)sizeof(int))
     {
         rb = recv(_socket_out, (char*)&pr.packet_size + pr.ps_rb, sizeof(int) - pr.ps_rb, flag1);
-//        qDebug()<<"unlocked_recv_packet(): packet size rb:"<<rb;
         if(rb > 0) pr.ps_rb += rb;
         else return 0;
         if(packet_size) *packet_size = pr.packet_size;
@@ -102,7 +103,6 @@ int DTcp::unlocked_recv_packet(void* data, int* packet_size, int recv_lim, int f
     if(pr.ps_rb >= (int)sizeof(int))
     {
         rb = recv(_socket_out, (char*)data + pr.total_rb, should_receive - pr.total_rb, flag2);
-//        qDebug()<<"unlocked_recv_packet(): data rb:"<<rb;
         if(rb > 0) pr.total_rb += rb;
         else return pr.total_rb;
     }
@@ -139,6 +139,7 @@ int DTcp::unlocked_send_packet(const void* data, int len, int flag1, int flag2)
     }
     return ps.total_sb;
 }
+
 
 int DTcp::set_in(const int &port, const char *address)
 {
@@ -382,6 +383,8 @@ int DTcp::try_connect()
     info("connected");
     return 0;
 }
+
+
 int DTcp::check_readability(int sec, int usec)
 {
     if(!is_valid_socket(_socket_out))

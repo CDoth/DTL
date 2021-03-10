@@ -11,8 +11,8 @@ struct SlowWriteFastRead { enum {FastWrite = false}; };
 template <class T, class WriteModel = FastWriteSlowRead>
 class DArray
 {
-    struct LargeType {enum {DirectPlacement = false};};
-    struct SmallType {enum {DirectPlacement = true};};
+    struct LargeType {enum {DirectPlacement = false};}; //rename it: this mean data array contain pointer to tartget object
+    struct SmallType {enum {DirectPlacement = true};}; //rename it: this mean data array contain real object
     struct TrivialType {};
     struct ComplexType {};
 
@@ -40,7 +40,7 @@ public:
     }
     ~DArray()
     {
-        if(w->pull() == 0) {_destruct(__metatype()); delete w;}
+        if(w->pull() == 0) {_destruct(__metatype()); delete data(); delete w;}
     }
 
     DArray(const DArray& a)
@@ -52,7 +52,7 @@ public:
     {
         if(w != a.w)
         {
-            DArray<T> tmp(a);
+            DArray<T, WriteModel> tmp(a);
             tmp.swap(*this);
         }
         return *this;
@@ -130,11 +130,12 @@ public:
     const T& operator[](int i) const {return _get_ref(i);}
     const T& at(int i) const {if(i >= 0 && i < data()->size) return _get_ref(i);}
 
-    void append(){detach();   _push(data()->_get_place(), __metatype());}
+    void append(){detach();  _push(data()->_get_place(), __metatype());}
     void append(const T& t) {detach();  _push(t, data()->_get_place(), __metatype());}
     void append(const T& t, int n) {detach(); while(n--) append(t);}
     void reserve(int s) {detach(); data()->_reserve(s);}
-    void remove(int i) {detach(); _remove(i, __metatype());}
+    void remove_all() {detach(); _destruct(__metatype());}
+    void remove_by_index(int i) {detach(); _remove(i, __metatype());}
     void remove(const T& v)
     {
         detach();
@@ -153,8 +154,7 @@ public:
     T& back() {detach(); return _get_ref(data()->size-1);}
     void push_back(const T& v) {detach(); append(v);}
     void replace(int i, const T& v) {if(i >= 0 && i < data()->size){detach(); _get_ref(i) = v;}}
-
-    void swap(DArray<T>& with){std::swap(w, with.w);}
+    void swap(DArray& with){std::swap(w, with.w);}
 private:
     struct Data
     {
@@ -169,10 +169,9 @@ private:
         {return reinterpret_cast<stored_type*>(data);}
         const stored_type* t() const
         {return reinterpret_cast<const stored_type*>(data);}
-
         void  _reserve(int s)
         {
-            if( s > alloc )
+            if( s > alloc || (s < alloc && s >= size) )
             {
                 alloc = s;
                 data = reget_mem(data, _real_size( alloc ));
@@ -189,7 +188,6 @@ private:
             alloc = ( size + 1 ) * 2;
             data = reget_mem(data, _real_size( alloc ));
         }
-
     };
     DDualWatcher* w;
 
@@ -229,7 +227,7 @@ private:
         if(std::is_trivial<T>::value) *reinterpret_cast<T*>(place) = T();
         else new (place) T;
     }
-    void _push( void* place, LargeType)
+    void _push(void* place, LargeType)
     {
         *reinterpret_cast<T**>(place) = new T;
     }
@@ -272,16 +270,15 @@ private:
     {
         auto b = data()->t();
         auto e = data()->t() + data()->size;
-        if(!std::is_trivial<T>::value)
-            while(b != e) (--e)->~T();
-        delete data();
+        if(!std::is_trivial<T>::value) while(b != e) (--e)->~T();
+        data()->size = 0;
     }
     void _destruct(LargeType)
     {
         auto b = data()->t();
         auto e = data()->t() + data()->size;
         while(b != e) delete *(--e);
-        delete data();
+        data()->size = 0;
     }
 };
 

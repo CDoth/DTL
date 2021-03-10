@@ -41,6 +41,7 @@ HEADERS += \
     DWatcher.h \
     DothTemplateLibrary.h \
     FileMover.h \
+    FileMover_old.h \
     daran.h \
     dmem.h
 

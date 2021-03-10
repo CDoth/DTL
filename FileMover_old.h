@@ -1,5 +1,5 @@
-#ifndef FILEMOVER_H
-#define FILEMOVER_H
+#ifndef FILEMOVER_OLD_H
+#define FILEMOVER_OLD_H
 #include "DTcp.h"
 #include "DArray.h"
 #include <fstream>
@@ -9,8 +9,8 @@
 #include "DProfiler.h"
 #include <mutex>
 
-#define FM_DEFAULT_RECV_BUFFER_SIZE 1024 * 1024 * 4
-#define FM_DEFAULT_SEND_BUFFER_SIZE 1024 * 1024 * 4
+#define FM_DEFAULT_RECV_BUFFER_SIZE 1024 * 1024 * 32
+#define FM_DEFAULT_SEND_BUFFER_SIZE 1024 * 1024 * 32
 
 #define FM_DEFAULT_MESSAGE_BUFFER_SIZE 1024 * 1024
 #define FM_DEFAULT_STRING_BUFFER_SIZE 1024 * 1024
@@ -18,21 +18,11 @@
 #define FM_NEW_DATA_BYTE 0b10000000
 #define FM_DISCONNECT_BYTE 0b01000000
 
-enum header_type
-{
-    NewFileInSystem = 9009,
-    File = 1001,
-    MultiFiles = 1011,
-    FileRequest = 2002,
-    MultiFilesRequest = 2012,
-    TableRequest = 3003,
-    Message = 4004,
-    NoType = 0
-};
-class FileMover
+enum header_type {Table = 9009, File = 1001, MultiFiles = 1011, FileRequest = 2002, MultiFilesRequest = 2012, TableRequest = 3003, Message = 4004, NoType = 0};
+class FileMover_old
 {
 public:
-    FileMover()
+    FileMover_old()
     {
         connection_status = false;
         message_buffer.resize(FM_DEFAULT_MESSAGE_BUFFER_SIZE);
@@ -43,20 +33,13 @@ public:
         set_default_download_path(FM_DEFAULT_DOWNLOAD_PATH);
     }
     typedef std::string string;
-    typedef uint64_t file_size_t;
-
-//    typedef uint8_t index_t;
-    typedef uint32_t index_t;
-
-    typedef uint32_t string_size;
-    typedef uint32_t WORD;
-    typedef uint64_t DWORD;
 //private:
 public:
     DTcp control;
     bool connection_status;
+    std::mutex mu;
 
-    const index_t system_index_shift = 10;
+    uint8_t last_ms_file = 0b10000001;
     //----------------------------------
     struct buffer
     {
@@ -80,7 +63,8 @@ public:
         string path;
         string name;
         string shortSize;
-        file_size_t size;
+        size_t size;
+        std::vector<file_info*>::const_iterator place;
     };
     struct file_send_handler
     {
@@ -95,7 +79,8 @@ public:
 
 
         file_info* f;
-        index_t index;
+        int index;
+        uint8_t multisending_index;
         double prc;
         struct timeval start;
         size_t bytes_left;
@@ -103,6 +88,7 @@ public:
 
         char speed[10];
         struct timeval last;
+
     };
     file_send_handler* alloc_send_handler()
     {
@@ -116,6 +102,7 @@ public:
 
         h->f = nullptr;
         h->index = -1;
+        h->multisending_index = last_ms_file++;
         h->prc = 0.0;
         h->bytes_left = 0;
         h->flush_now = 0;
@@ -127,12 +114,15 @@ public:
         int read_for_packet;
 
 
+
         file_info* f;
         int index;
+        uint8_t multisending_index;
         double prc;
         struct timeval start;
         size_t bytes_left;
         int read_now;
+
 
         int read;
     };
@@ -143,6 +133,7 @@ public:
         h->read_for_packet = 0;
         h->f = nullptr;
         h->index = 0;
+        h->multisending_index = last_ms_file++;
         h->prc = 0.0;
         h->bytes_left = 0;
         h->read_now = 0;
@@ -156,102 +147,113 @@ public:
 
 
 
-    std::map<index_t, file_send_handler*>        send_map;
-    std::deque<file_send_handler*>               send_queue;
-
-    std::map<index_t, file_recv_handler*>        recv_map;
-    std::queue<index_t> available_index;
+    typedef DArray<file_info*> FILE_TABLE;
+    //send:
+    FILE_TABLE                                   local_table;
+    std::queue<file_send_handler*>               files_queue;
+    //recv:
+    FILE_TABLE                                   out_table;
+    std::map<uint8_t, file_recv_handler*>        recv_files;
 
 
     std::queue<specific_data_send_handler*>      specific_queue;
 
+    struct send_item
+    {
+        const void* data;
+        int size;
+        bool packet;
+    };
     struct message_data
     {
         int begin;
         int size;
     };
+    struct mfiles_data
+    {
+        DArray<int> files;
+    };
 
 
     void print_file_info(const file_info* fi) const
     {
-        std::cout << "File: " << fi->name << " " << fi->size << std::endl;
+        std::cout << "File: " << fi->path << " " << fi->shortSize << std::endl;
     }
     void print_local_table() const
     {
-        if(!send_map.size())
+        if(local_table.size())
         {
-            qDebug()<<"Local table is empty";
-            return;
+            std::cout << "Local table:" << std::endl;
+            for(int i=0;i!=local_table.size();++i)
+            {
+                std::cout << i <<" : ";
+                print_file_info(local_table[i]);
+            }
+
         }
-        auto b = send_map.cbegin();
-        auto e = send_map.cend();
-        std::cout << "Local Table:" << std::endl;
-        while( b!=e )
-        {
-            std::cout << b->first <<" : ";
-            print_file_info(b->second->f);
-            ++b;
-        }
+        else qDebug()<<"Local table is empty";
     }
     void print_out_table() const
     {
-        if(!recv_map.size())
+        if(out_table.size())
         {
-            qDebug()<<"Out table is empty";
-            return;
+            std::cout << "Out table:" << std::endl;
+            for(int i=0;i!=out_table.size();++i)
+                std::cout << i << ": " << out_table[i]->name << " " << out_table[i]->shortSize << std::endl;
         }
-        auto b = recv_map.cbegin();
-        auto e = recv_map.cend();
-        std::cout << "Out Table:" << std::endl;
-        while( b!=e )
-        {
-            std::cout << (int)b->first <<" : ";
-            print_file_info(b->second->f);
-            ++b;
-        }
-    }
-    void print_send_queue() const
-    {
-        if(!send_queue.size())
-        {
-            qDebug()<<"Send Queue is empty";
-            return;
-        }
-        auto b = send_queue.begin();
-        auto e = send_queue.end();
-        while( b != e ) print_file_info((*b++)->f);
+        else qDebug()<<"Out table is empty";
     }
 
     void push_files(const DArray<int>& files)
     {
-        file_send_handler* first = send_map[files.constFront()];
-        file_send_handler* last  = first;
+        qDebug()<<"push files"<<files.size();
+        int first = files.constFront();
+        file_send_handler* fh = alloc_send_handler();
+        fh->f = local_table[first];
+        fh->pack_freq = 1;
+        fh->index = first;
+        file_send_handler* curr = fh;
         auto b = files.constBegin() + 1;
         auto e = files.constEnd();
         while( b != e )
         {
-            auto curr = send_map[*b];
-            last->connect_next = curr;
-            curr->connect_prev = last;
-            curr = last;
+            file_send_handler* h = alloc_send_handler();
+            h->f = local_table[*b];
+            h->pack_freq = 1;
+            h->index = *b;
+            curr->connect_next = h;
+            h->connect_prev = curr;
+            h->bytes_left = 0;
+            curr = h;
             ++b;
         }
-        last->connect_next = first;
-        first->connect_prev = last;
-        send_queue.push_back(first);
+        fh->connect_prev = curr;
+        curr->connect_next = fh;
+
+//        qDebug()<<fh->f->path.c_str()<<fh->connect_prev<<fh->connect_next<<"this:"<<fh<<"ms index:"<<fh->multisending_index;
+//        qDebug()<<curr->f->path.c_str()<<curr->connect_prev<<curr->connect_next<<"this:"<<curr<<curr->multisending_index;
+
+
+        files_queue.push(fh);
     }
     void push_file(int file_index)
     {
-        send_queue.push_back(send_map[file_index]);
+        file_send_handler* fh = alloc_send_handler();
+        fh->f = local_table[file_index];
+        fh->index = file_index;
+        files_queue.push(fh);
     }
-    void push_new_file_handler(file_send_handler* f)
+    void push_table()
     {
-        if(send_map.size())
+        if(local_table.size())
         {
             specific_data_send_handler* sh;
             set_mem(sh, 1);
-            sh->type = NewFileInSystem;
-            sh->data = f;
+            sh->type = Table;
+
+            FILE_TABLE *local_table_copy = new FILE_TABLE(local_table);
+            sh->data = local_table_copy;
+
             specific_queue.push(sh);
         }
     }
@@ -265,8 +267,9 @@ public:
     }
     void push_file_request(int file_index, const char* path = nullptr)
     {
-        recv_map[file_index]->f->path = path ? path : default_path;
-        recv_map[file_index]->f->path.append(recv_map[file_index]->f->name);
+        if(path) out_table[file_index]->path = path;
+        else     out_table[file_index]->path = default_path;
+        out_table[file_index]->path.append(out_table[file_index]->name);
 
         specific_data_send_handler* sh;
         set_mem(sh,1);
@@ -280,9 +283,13 @@ public:
     {
         for(int i=0;i!=files.size();++i)
         {
-            recv_map[files[i]]->f->path = path ? path : default_path;
-            recv_map[files[i]]->f->path.append(recv_map[files[i]]->f->name);
+            if(path) out_table[files[i]]->path = path;
+            else     out_table[files[i]]->path = default_path;
+            out_table[files[i]]->path.append(out_table[files[i]]->name);
+
+//            qDebug()<<"full path:"<<out_table[files[i]]->path.c_str()<<"for file:"<<files[i];
         }
+
         specific_data_send_handler* sh;
         set_mem(sh, 1);
         sh->type = MultiFilesRequest;
@@ -290,6 +297,8 @@ public:
         sh->data = _files;
         specific_queue.push(sh);
     }
+
+
     void push_message(int begin, int size)
     {
         specific_data_send_handler* sh;
@@ -301,51 +310,44 @@ public:
         sh->data = md;
         specific_queue.push(sh);
     }
+
     void force_file(int file_index)
     {
-//        if(files_queue.size())
-//        {
-//            file_send_handler* fh = new file_send_handler;
-//            fh->f = local_table[file_index];
-//            fh->interuptable = true;
-//            fh->connect_next = nullptr;
-//            fh->connect_prev = nullptr;
-//            fh->pack_freq = 1;
-//            fh->multisending_index = last_ms_file++;
-//            fh->initial_sent = false;
-//            fh->index = file_index;
-//            file_send_handler* curr = files_queue.front();
-//            file_send_handler* next = curr->connect_next;
+        if(files_queue.size())
+        {
+            file_send_handler* fh = new file_send_handler;
+            fh->f = local_table[file_index];
+            fh->interuptable = true;
+            fh->connect_next = nullptr;
+            fh->connect_prev = nullptr;
+            fh->pack_freq = 1;
+            fh->multisending_index = last_ms_file++;
+            fh->initial_sent = false;
+            fh->index = file_index;
+            file_send_handler* curr = files_queue.front();
+            file_send_handler* next = curr->connect_next;
 
-//            if(next)
-//            {
-//                curr->connect_next->connect_prev = fh;
-//                fh->connect_next = curr->connect_next;
-//                curr->connect_next = fh;
-//            }
-//            else
-//            {
-//                fh->connect_next = curr;
-//                curr->connect_next = fh;
-//                curr->connect_prev = fh;
-//            }
-//            fh->connect_prev = curr;
-//        }
+            if(next)
+            {
+                curr->connect_next->connect_prev = fh;
+                fh->connect_next = curr->connect_next;
+                curr->connect_next = fh;
+            }
+            else
+            {
+                fh->connect_next = curr;
+                curr->connect_next = fh;
+                curr->connect_prev = fh;
+            }
+            fh->connect_prev = curr;
+        }
     }
-    static void stream(FileMover* fm)
+    static void stream(FileMover_old* fm)
     {
-        index_t nd_byte = FM_NEW_DATA_BYTE;
-        index_t ds_byte = FM_DISCONNECT_BYTE;
-
-
-        file_recv_handler* current_recv_file = nullptr;
-        file_send_handler* current_send_file = nullptr;
-        specific_data_send_handler* current_spec = nullptr;
-        file_recv_handler* new_file = nullptr;
-        file_recv_handler* start_recv_file = nullptr;
-
+        uint8_t nd_byte = FM_NEW_DATA_BYTE;
+        uint8_t ds_byte = FM_DISCONNECT_BYTE;
         //----recv
-        index_t data_index = 0;
+        uint8_t main_byte = 0;
         int rb = 0;
         header_type rtype = NoType;
         DArray<int> files;
@@ -356,60 +358,79 @@ public:
         int table_item_packet = 0;
         int table_packets_recv = 0;
         int packet_size = 0;
-        int index = 0;
-
+        file_recv_handler* current_recv_file = nullptr;
 
         //----send
         header_type ft = File;
         int speed_rate = 4;
         int sb = 0;
+        file_send_handler* current_send_file = nullptr;
 
         int file_byte_sent = 0;
 
+        DArray<send_item>::const_iterator send_progress = nullptr;
+        DArray<send_item>::const_iterator send_progress_end = nullptr;
 
-        SENDC sc(&fm->control);
-        sc.reserve(10);
-        RECVC rc(&fm->control);
-        rc.reserve(10);
+        DArray<send_item> send_content;
         //-----------------
         while(true)
         {
             if(!fm->connection_status) break;
             if(fm->control.check_readability(0,3000))
             {
-                if(data_index)
+                if(main_byte)
                 {
-                    if(data_index == FM_NEW_DATA_BYTE)
+                    if(main_byte == FM_NEW_DATA_BYTE)
                     {
-                        qDebug()<<"new data block";
                         if(rtype == NoType)
                         {
                             rb = fm->control.receive_to(&rtype, sizeof(header_type));
                         }
                         switch(rtype)
                         {
-                        case NewFileInSystem:
+                        case Table:
                         {
-                            if(!new_file)
+                            fm->mu.lock();
+                            if(!table_size)
                             {
-                                new_file = fm->alloc_recv_handler();
-                                new_file->f = new file_info;
-                                rc.add_item({&new_file->index, sizeof(index_t), false});
-                                rc.add_item({&new_file->f->size, sizeof(file_size_t), false});
-                                rc.add_item({&new_file->packet_size, sizeof(int), false});
-                                rc.add_item({fm->string_buffer.data, 0, true});
-                                rc.complete();
+                                fm->out_table.clear();
+                                rb = fm->control.receive_to(&table_size, sizeof(int));
                             }
-                            if(rc.unlocked_recv())
+                            else
                             {
-                                qDebug()<<"get new file:"<<new_file->index;
-                                new_file->f->name = fm->string_buffer.data;
-                                fm->recv_map[new_file->index] = new_file;
-                                new_file = nullptr;
+                                rb = fm->control.unlocked_recv_packet(fm->string_buffer.data, &packet_size);
+                            }
+
+                            if(packet_size && rb == packet_size)
+                            {
+                                if(table_item_packet)
+                                {
+                                    fm->out_table.back()->shortSize = fm->string_buffer.data;
+                                    --table_item_packet;
+                                    ++table_packets_recv;
+                                    packet_size = 0;
+                                }
+                                else
+                                {
+                                    file_info* item = new file_info;
+                                    item->name = fm->string_buffer.data;
+                                    fm->out_table.push_back(item);
+                                    ++table_item_packet;
+                                    ++table_packets_recv;
+                                    packet_size = 0;
+                                }
+                            }
+                            if(table_size && table_packets_recv == table_size)
+                            {
+                                main_byte = 0;
                                 rtype = NoType;
-                                data_index = 0;
+                                packet_size = 0;
+                                table_packets_recv = 0;
+                                table_item_packet = 0;
+                                table_size = 0;
                                 fm->print_out_table();
                             }
+                            fm->mu.unlock();
                             break;
                         }
                         case Message:
@@ -417,7 +438,7 @@ public:
                             rb = fm->control.unlocked_recv_packet(fm->string_buffer.data, &packet_size);
                             if(packet_size && rb == packet_size)
                             {
-                                data_index = 0;
+                                main_byte = 0;
                                 rtype = NoType;
                                 packet_size = 0;
                                 std::cout << fm->string_buffer.data << std::endl;
@@ -426,36 +447,43 @@ public:
                         }
                         case File:
                         {
-                            rb = fm->control.unlocked_recv_to(&index, sizeof(index_t));
-                            if(rb == sizeof(index_t))
-                            {
-                                file_recv_handler* h = fm->recv_map[index];
-                                gettimeofday(&h->start, nullptr);
-                                h->f->file = fopen(h->f->path.c_str(), "wb");
-                                h->read = 0;
-                                h->prc  = 0.0;
-                                h->bytes_left = h->f->size;
-                                h->read_for_packet = 0;
-                                h->read_now = (size_t)h->packet_size < fm->recv_buffer.size ? h->packet_size : fm->recv_buffer.size;
-                                rtype = NoType;
-                                data_index = 0;
-                                qDebug()<<"get File header:"<<index<<h->f->name.c_str()<<h->f->path.c_str()<<h->f->size;
-                                index = 0;
-                            }
+                            file_recv_handler* h = fm->alloc_recv_handler();
+                            while( fm->control.receive_to(&h->index, sizeof(int)) <= 0 ){}
+                            h->f = fm->out_table[h->index];
+                            while( fm->control.receive_to(&h->f->size, sizeof(size_t)) <= 0 ){}
+                            while( fm->control.receive_to(&h->packet_size, sizeof(int)) <= 0 ){}
+                            while( fm->control.receive_to(&h->multisending_index, 1) <= 0 ){}
+
+                            qDebug()<<"receive file header"<<"index:"<<h->index<<"size:"<<h->f->size<<"ms index:"<<h->multisending_index<<
+                                      "path:"<<h->f->path.c_str()<<"out table size:"<<fm->out_table.size();
+
+                            gettimeofday(&h->start, nullptr);
+                            h->f->file = fopen(h->f->path.c_str(), "wb");
+
+
+
+                            h->read = 0;
+                            h->prc = 0.0;
+                            h->bytes_left = h->f->size;
+
+                            h->read_for_packet = 0;
+                            h->read_now = (size_t)h->packet_size < fm->recv_buffer.size ? h->packet_size : fm->recv_buffer.size;
+                            fm->recv_files[h->multisending_index] = h;
+                            rtype = NoType;
+                            main_byte = 0;
                             break;
                         }
                         case FileRequest:
                         {
-                            rb = fm->control.unlocked_recv_to(&index, sizeof(index_t));
-                            if(rb == sizeof(index_t))
+                            int index = 0;
+                            while ( fm->control.receive_to(&index, sizeof(int)) <= 0 );
+                            if(index >=0 && index < (int)fm->local_table.size())
                             {
-                                qDebug()<<"get file request:"<<index;
                                 rtype = NoType;
-                                data_index = 0;
+                                main_byte = 0;
                                 fm->push_file(index);
-                                index = 0;
                             }
-
+                            else qDebug()<<"Get File Request with wrong index:"<<index;
                             break;
                         }
                         case MultiFilesRequest:
@@ -473,7 +501,7 @@ public:
                                 if(ms_files == ms_size)
                                 {
                                     rtype = NoType;
-                                    data_index = 0;
+                                    main_byte = 0;
                                     ms_size = 0;
                                     ms_files = 0;
                                     fm->push_files(files);
@@ -481,6 +509,8 @@ public:
                                     qDebug()<<"get MultiFilesRequest"<<files.size();
                                 }
                             }
+
+
                             break;
                         }
                         case TableRequest: break;
@@ -489,22 +519,22 @@ public:
                     }
                     else
                     {
-                        current_recv_file = fm->recv_map[data_index];
+                        current_recv_file = fm->recv_files[main_byte];
                         rb = fm->control.unlocked_recv_to(fm->recv_buffer.data, current_recv_file->read_now);
                         if(rb == current_recv_file->read_now)
                         {
+
                             fwrite(fm->recv_buffer.data, rb, 1, current_recv_file->f->file);
                             if( current_recv_file->bytes_left -= rb )
                             {
                                 current_recv_file->read_for_packet += rb;
                                 current_recv_file->prc = 100.0 - ((double) current_recv_file->bytes_left * 100.0 / current_recv_file->f->size);
-                                qDebug()<<"recv progress:"<<current_recv_file->index<<current_recv_file->prc<<'%';
                                 current_recv_file->read_now = current_recv_file->bytes_left < (size_t)fm->recv_buffer.size ?
                                                               current_recv_file->bytes_left : fm->recv_buffer.size;
                                 if(current_recv_file->read_for_packet == current_recv_file->packet_size)
                                 {
                                     current_recv_file->read_for_packet = 0;
-                                    data_index = 0;
+                                    main_byte = 0;
                                     rtype = NoType;
                                 }
                             }
@@ -514,58 +544,77 @@ public:
                                 timeval end;
                                 gettimeofday(&end, nullptr);
                                 timeval t = PROFILER::time_dif(&current_recv_file->start, &end);
-                                qDebug()<<"recv file:"<<current_recv_file->index<<current_recv_file->f->path.c_str()
+                                qDebug()<<"recv file:"<<current_recv_file->multisending_index<<current_recv_file->f->path.c_str()
                                        <<current_recv_file->f
                                        <<current_recv_file->f->path.size()
                                        <<"time:"<<t.tv_sec<<"sec"<<t.tv_usec<<"usec";
 
                                 fclose(current_recv_file->f->file);
+                                fm->recv_files.erase(fm->recv_files.find(main_byte));
+                                fm->out_table.remove(current_recv_file->f);
                                 delete current_recv_file->f;
                                 delete current_recv_file;
                                 current_recv_file = nullptr;
-                                data_index = 0;
+                                main_byte = 0;
                             }
                         }
                     }
                 }
                 else
                 {
-                    rb = fm->control.unlocked_recv_to(&data_index, sizeof(index_t));
-//                    qDebug()<<"read data index:"<<data_index<<rb;
+                    while( (rb = fm->control.unlocked_recv_to(&main_byte, 1)) <= 0 )
+                    {
+                        if(rb < 0) break;
+                    }
                     if(rb < 0) break;
-                    if(rb < (int)sizeof(index_t)) data_index = 0;
+//                    qDebug()<<"read main byte:"<<main_byte;
                 }
             }
             if(fm->control.check_writability(0,3000))
             {
+
                 if(!fm->connection_status)
                 {
                     while( (sb = fm->control.send_it(&ds_byte, 1)) <= 0 );
                 }
                 if(  ((current_send_file && current_send_file->interuptable) || !current_send_file)  &&  fm->specific_queue.size())
                 {
-                    qDebug()<<"SPEC BLOCK";
-                    current_spec = fm->specific_queue.front();
-                    switch (current_spec->type)
+                    specific_data_send_handler* h = fm->specific_queue.front();
+                    switch (h->type)
                     {
-                    case NewFileInSystem:
+                    case Table:
                     {
-                        if(sc.empty())
+                        if(!send_progress)
                         {
-                            file_send_handler* h = (file_send_handler*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t), false});
-                            sc.add_item({&current_spec->type, sizeof(header_type), false});
-                            sc.add_item({&h->index, sizeof(index_t), false});
-                            sc.add_item({&h->f->size, sizeof(file_size_t), false});
-                            sc.add_item({&h->flush_now, sizeof(int), false});
-                            sc.add_item({h->f->name.c_str(), (int)h->f->name.size(), true});
-                            sc.complete();
+                            FILE_TABLE* t = (FILE_TABLE*)h->data;
+                            int t_size = t->size() * 2;
+                            send_content.clear();
+                            send_content.push_back({&nd_byte, 1, false});
+                            send_content.push_back({&h->type, sizeof(header_type), false});
+                            send_content.push_back({&t_size, sizeof(int), false});
+                            for(int i=0;i!=t->size();++i)
+                            {
+                                file_info* it = t->at(i);
+                                send_content.push_back({it->name.c_str(), (int)it->name.size() + 1, true});
+                                send_content.push_back({it->shortSize.c_str(), (int)it->shortSize.size() + 1, true});
+                            }
+                            send_progress = send_content.constBegin();
+                            send_progress_end = send_content.constEnd();
                         }
-                        if(sc.unlocked_send())
+                        while( send_progress != send_progress_end && sb >= 0 )
                         {
+                            if((*send_progress).packet) sb = fm->control.unlocked_send_packet((*send_progress).data, (*send_progress).size);
+                            else sb = fm->control.unlocked_send_it((*send_progress).data, (*send_progress).size);
+                            if(sb == (*send_progress).size) ++send_progress;
+                        }
+                        if(send_progress == send_progress_end)
+                        {
+                            send_content.clear();
                             fm->specific_queue.pop();
-                            free_mem(current_spec);
-                            current_spec = nullptr;
+                            send_progress = nullptr;
+                            send_progress_end = nullptr;
+                            delete (FILE_TABLE*)h->data;
+                            free_mem(h);
                         }
                         break;
                     }
@@ -575,66 +624,61 @@ public:
                     }
                     case FileRequest:
                     {
-                        if(sc.empty())
-                        {
-                            int* index = (int*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t), false});
-                            sc.add_item({&current_spec->type, sizeof(header_type), false});
-                            sc.add_item({index, sizeof(index_t), false});
-                            sc.complete();
-                        }
-                        if(sc.unlocked_send())
-                        {
-                            qDebug()<<"send file request";
-                            fm->specific_queue.pop();
-                            free_mem(current_spec->data);
-                            free_mem(current_spec);
-                            current_spec = nullptr;
-                        }
+                        fm->control.send_it(&nd_byte, 1);
+                        fm->control.send_it(&h->type, sizeof(header_type));
+                        fm->control.send_it(h->data, sizeof(int));
+                        fm->specific_queue.pop();
+                        free_mem(h->data);
+                        free_mem(h);
                         break;
                     }
                     case Message:
                     {
-                        if(sc.empty())
+                        if(!send_progress)
                         {
-                            message_data* md = (message_data*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t), false});
-                            sc.add_item({&current_spec->type, sizeof(header_type), false});
-                            sc.add_item({fm->message_buffer.data + md->begin, md->size, true});
-                            sc.complete();
+                            send_content.clear();
+                            send_content.push_back({&nd_byte, 1, false});
+                            send_content.push_back({&h->type, sizeof(header_type), false});
+                            message_data* md = (message_data*)h->data;
+                            send_content.push_back({fm->message_buffer.data + md->begin, md->size, true});
+
+                            send_progress = send_content.constBegin();
+                            send_progress_end = send_content.constEnd();
                         }
-                        if(sc.unlocked_send())
+                        while( send_progress != send_progress_end && sb >= 0 )
                         {
+                            if((*send_progress).packet) sb = fm->control.unlocked_send_packet((*send_progress).data, (*send_progress).size);
+                            else sb = fm->control.unlocked_send_it((*send_progress).data, (*send_progress).size);
+                            if(sb == (*send_progress).size) ++send_progress;
+                        }
+                        if(send_progress == send_progress_end)
+                        {
+                            send_content.clear();
                             fm->specific_queue.pop();
-                            free_mem(current_spec->data);
-                            free_mem(current_spec);
-                            current_spec = nullptr;
+                            send_progress = nullptr;
+                            send_progress_end = nullptr;
+                            free_mem(h->data);
+                            free_mem(h);
                         }
+
                         break;
                     }
                     case MultiFilesRequest:
                     {
-                        if(sc.empty())
+                        fm->control.send_it(&nd_byte,1);
+                        fm->control.send_it(&h->type, sizeof(header_type));
+                        DArray<int>* files = (DArray<int>*)h->data;
+                        int size = files->size();
+                        fm->control.send_it(&size, sizeof(int));
+                        for(int i=0;i!=files->size();++i)
                         {
-                            DArray<int>* files = (DArray<int>*)current_spec->data;
-                            int size = files->size();
-                            if(size>7) sc.reserve(size + 3);
-                            sc.add_item({&nd_byte, sizeof(index_t), false});
-                            sc.add_item({&current_spec->type, sizeof(header_type), false});
-                            sc.add_item({&size, sizeof(index_t), false});
-                            auto b = files->constBegin();
-                            auto e  = files->constEnd();
-                            while( b != e ) sc.add_item({b++, sizeof(int), false});
-                            sc.complete();
+                            int index = (*files)[i];
+                            fm->control.send_it(&index, sizeof(int));
                         }
-                        if(sc.unlocked_send())
-                        {
-                            sc.reserve(10);
-                            fm->specific_queue.pop();
-                            delete (DArray<int>*)current_spec->data;
-                            free_mem(current_spec);
-                            current_spec = nullptr;
-                        }
+                        delete files;
+                        free_mem(h);
+                        fm->specific_queue.pop();
+                        qDebug()<<"sent MultiFilesRequest";
                         break;
                     }
 
@@ -643,33 +687,68 @@ public:
                     }
 
                 }
-                if(!fm->send_queue.empty() && !current_spec)
+                if(fm->files_queue.size())
                 {
-                    if(!current_send_file) current_send_file = fm->send_queue.front();
-                    if(sc.empty() && !current_send_file->initial_sent)
+//                    qDebug()<<"try send file";
+                    if(!current_send_file)
                     {
-                        qDebug()<<"1";
+//                        qDebug()<<"--- 4";
+                        current_send_file = fm->files_queue.front();
+                    }
+                    if(!current_send_file->bytes_left)
+                    {
+                        send_content.clear();
+                        send_content.push_back({&nd_byte, 1, false});
+                        send_content.push_back({&ft, sizeof(header_type), false});
+                        //file header:
                         current_send_file->interuptable = false;
                         current_send_file->initial_sent = false;
-                        sc.add_item({&nd_byte, sizeof(index_t), false});
-                        sc.add_item({&ft, sizeof(header_type), false});
-                        sc.add_item({&current_send_file->index, sizeof(index_t), false});
+                        current_send_file->bytes_left = current_send_file->f->size;
+                        current_send_file->flush_now = current_send_file->bytes_left < (size_t)fm->send_buffer.size ?
+                                                       current_send_file->bytes_left : fm->send_buffer.size;
                         current_send_file->prc = 0.0;
                         current_send_file->pack_sent = 0;
-                        sc.complete();
+
+
+                        send_content.push_back({&current_send_file->index, sizeof(int), false}); //index
+                        send_content.push_back({&current_send_file->bytes_left, sizeof(size_t), false}); // file size
+                        send_content.push_back({&current_send_file->flush_now, sizeof(int), false}); // packet size
+                        send_content.push_back({&current_send_file->multisending_index, 1, false}); // ms index
+
+
+                        send_progress = send_content.constBegin();
+                        send_progress_end = send_content.constEnd();
+                        gettimeofday(&current_send_file->start, nullptr);
+
+//                        qDebug()<<"--- 3 INITIAL FOR FILE:"<<current_send_file->multisending_index;
+                        sb = 0;
                     }
-                    if(sc.unlocked_send())
+
+                    while( send_progress != send_progress_end )
                     {
-                        qDebug()<<"2";
+                        header_type type = *(header_type*)(*send_progress).data;
+                        sb = fm->control.unlocked_send_it((*send_progress).data, (*send_progress).size);
+                        if(sb == (*send_progress).size) ++send_progress;
+                        else if(sb < 0) break;
+//                        qDebug()<<"--- 2"<<"sb:"<<sb<<type<<current_send_file->multisending_index;
+                    }
+                    if( send_progress == send_progress_end && !current_send_file->initial_sent)
+                    {
+//                        qDebug()<<"--- 1";
                         current_send_file->interuptable = true;
                         current_send_file->initial_sent = true;
+                        send_progress = nullptr;
+                        send_progress_end = nullptr;
                         gettimeofday(&current_send_file->last, nullptr);
-                        gettimeofday(&current_send_file->start, nullptr);
                     }
-                    if( current_send_file->initial_sent)
+                    if( current_send_file->initial_sent )
                     {
-                        if(!file_byte_sent) file_byte_sent = fm->control.send_it(&current_send_file->index, sizeof(index_t)); //sizeof(index_t)
-                        if(file_byte_sent == sizeof(index_t)) //sizeof(index_t)
+                        if(!file_byte_sent)
+                        {
+//                            qDebug()<<"send file byte"<<current_send_file->multisending_index;
+                            file_byte_sent = fm->control.send_it(&current_send_file->multisending_index, 1);
+                        }
+                        if(file_byte_sent == 1)
                         {
                             if(current_send_file->interuptable)
                                 fread(fm->send_buffer.data, current_send_file->flush_now, 1, current_send_file->f->file);
@@ -686,7 +765,6 @@ public:
 
                                     current_send_file->interuptable = true;
                                     current_send_file->prc = 100.0 - ((double) current_send_file->bytes_left * 100.0 / current_send_file->f->size);
-                                    qDebug()<<"send progress:"<<current_send_file->index<<current_send_file->prc<<'%';
                                     if(current_send_file->connect_next && ++current_send_file->pack_sent == current_send_file->pack_freq)
                                     {
                                         current_send_file->pack_sent = 0;
@@ -695,12 +773,14 @@ public:
                                 }
                                 else
                                 {
+//                                    qDebug()<<"--- 6";
                                     timeval end;
                                     gettimeofday(&end, nullptr);
                                     timeval t = PROFILER::time_dif(&current_send_file->start, &end);
                                     qDebug()<<"sent file:"<<current_send_file->f->name.c_str()<<"time:"<<t.tv_sec<<"sec"<<t.tv_usec<<"usec";
 
                                     fclose(current_send_file->f->file);
+                                    fm->local_table.remove(current_send_file->f);
                                     delete current_send_file->f;
                                     if(current_send_file->connect_next)
                                     {
@@ -714,15 +794,16 @@ public:
                                             current_send_file->connect_next->connect_prev = current_send_file->connect_prev;
                                             current_send_file->connect_prev->connect_next = current_send_file->connect_next;
                                         }
-                                        fm->send_queue.front() = current_send_file->connect_next;
+                                        fm->files_queue.front() = current_send_file->connect_next;
                                     }
                                     else
                                     {
-                                        fm->send_queue.pop_front();
+                                        fm->files_queue.pop();
                                     }
                                     delete current_send_file;
                                     current_send_file = nullptr;
                                 }
+
 
 
 //                                struct timeval now;
@@ -750,14 +831,20 @@ public:
 
                             }
                         }
-                        else current_send_file->interuptable = true;
+                        else
+                        {
+                            current_send_file->interuptable = true;
+                        }
                     }
                 }
             }
-
-            if(data_index == FM_DISCONNECT_BYTE) break;
-//            if(current_recv_file) qDebug()<<"recv progress:"<<"file:"<<current_recv_file->index<<current_recv_file->prc<<'%';
-//            if(current_send_file) qDebug()<<"send progress:"<<"file:"<<current_send_file->index<<current_send_file->prc<<'%';
+            else
+            {
+//                qDebug()<<"Can't write";
+            }
+            if(main_byte == FM_DISCONNECT_BYTE) break;
+//            if(current_recv_file) qDebug()<<"recv progress:"<<"file:"<<current_recv_file->multisending_index<<current_recv_file->prc<<'%';
+//            if(current_send_file) qDebug()<<"send progress:"<<"file:"<<current_send_file->multisending_index<<current_send_file->prc<<'%';
         }
 
 
@@ -807,17 +894,19 @@ public:
 
         if(strcmp(cmd, "info") == 0)
         {
-
+            qDebug()<<"local table size:"<<local_table.size();
+            qDebug()<<"out table size:"<<out_table.size();
+            qDebug()<<"files queue size:"<<files_queue.size();
+            qDebug()<<"recv files size:"<<recv_files.size();
+            qDebug()<<"spec queue size:"<<specific_queue.size();
         }
         if(strcmp(cmd, "test") == 0)
         {
-            prepare_to_send("G://DH//e1.mkv");
-            prepare_to_send("G://DH//sv_test.mkv");
-            prepare_to_send("G://DH//e2.mkv");
-            prepare_to_send("G://DH//t1_.txt");
-            prepare_to_send("G://DH//pic_car.jpg");
-            prepare_to_send("G://DH//ost.zip");
-
+            prepare_to_send("D://A//test_video.mkv");
+            prepare_to_send("D://A//photo.jpg");
+            prepare_to_send("D://A//pic_car.jpg");
+            prepare_to_send("D://A//t1_.txt");
+            push_table();
         }
         if(strcmp(cmd, "disconnect") == 0)
         {
@@ -866,7 +955,7 @@ public:
                     if(v < 0 && *value != ' ')
                     {
                         v = atoi(value);
-                        if(v>=0 && v < (int)recv_map.size()) list.push_back(v);
+                        if(v>=0 && v < out_table.size()) list.push_back(v);
                         else qDebug()<<"Get Files Error: Wrong Index:"<<v;
                     }
                     if(v >= 0 && *value == ',') v = -1;
@@ -912,7 +1001,7 @@ public:
                     if(index && *value != ' ')
                     {
                         int v = atoi(value);
-                        if(v > 0 && v < (int)recv_map.size())
+                        if(v > 0 && v < (int)out_table.size())
                             list.push_back(v);
                         else
                         {
@@ -928,8 +1017,8 @@ public:
         {
             if(value)
             {
-                auto handler = prepare_to_send(value);
-                if(handler) push_new_file_handler(handler);
+                prepare_to_send(value);
+                push_table();
             }
             else qDebug()<<"No value";
         }
@@ -943,7 +1032,7 @@ public:
         }
         if(strcmp(cmd, "get file") == 0)
         {
-            if(recv_map.empty())
+            if(out_table.empty())
             {
                 qDebug()<<"files table is emty!"; return;
             }
@@ -957,7 +1046,10 @@ public:
                     if(path  && *value != ' ') {path = value; break;}
                     ++value;
                 }
-                if(recv_map.find(index) != recv_map.end()) push_file_request(index, path);
+                if(index >=0 && index < (int)out_table.size())
+                {
+                    push_file_request(index, path);
+                }
                 else qDebug()<<"get file: wrong index:"<<index;
             }
             else qDebug()<<"no value";
@@ -967,14 +1059,14 @@ public:
             if(value)
             {
                 int index = atoi(value);
-                if(index >=0 && index < (int)recv_map.size()) force_file(index);
+                if(index >=0 && index < (int)out_table.size()) force_file(index);
                 else qDebug()<<"Force File Error: Wrong Index:"<<index;
             }
             else qDebug()<<"Force File Error: NoValue";
         }
         if(strcmp(cmd, "send table") == 0)
         {
-//            push_table();
+            push_table();
         }
         if(strcmp(cmd, "m") == 0)
         {
@@ -987,23 +1079,13 @@ public:
             }
         }
     }
-    file_send_handler* prepare_to_send(const char* path)
+    void prepare_to_send(const char* path)
     {
-        auto b = send_map.cbegin();
-        while( b != send_map.cend() )
-        {
-            if( strcmp( b->second->f->path.c_str(), path) == 0 )
-            {
-                qDebug()<<"File:"<<path<<"already in system";
-                return nullptr;
-            }
-            ++b;
-        }
         FILE* file = fopen(path, "rb");
         if(!file)
         {
             qDebug()<<"Load file: wrong path";
-            return nullptr;
+            return;
         }
         const char* pi = path;
         const char* pn = path;
@@ -1027,33 +1109,17 @@ public:
             int tb = gb / 1024;    gb %= 1024;    if(!tb){v = gb + (double)mb/1024; sprintf(shortSize, "%.2f Gb", v); break;}
             v = tb + (double)gb/1024; sprintf(shortSize, "%.2f Tb", v);   break;
         }
-
-        file_send_handler* h = alloc_send_handler();
-        h->f = new file_info;
-        h->f->path = path;
-        h->f->name = pn;
-        h->f->shortSize = shortSize;
-        h->f->size = size;
-        h->f->file = file;
-        if(available_index.size())
-        {
-            h->index = available_index.front();
-            available_index.pop();
-        }
-        else
-        {
-            h->index = send_map.size() + system_index_shift;
-        }
-
-        qDebug()<<"NEW INDEX:"<<h->index;
-        h->bytes_left = size;
-        h->flush_now = h->bytes_left < (size_t)send_buffer.size ? h->bytes_left : send_buffer.size;
-        send_map[h->index] = h;
-        print_file_info(h->f);
-        return h;
+        file_info* fi = new file_info;
+        fi->path = path;
+        fi->name = pn;
+        fi->shortSize = shortSize;
+        fi->size = size;
+        fi->file = file;
+        print_file_info(fi);
+        local_table.push_back(fi);
     }
 //v 1.5.0
 };
 
 
-#endif // FILEMOVER_H
+#endif // FILEMOVER_OLD_H
