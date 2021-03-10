@@ -522,6 +522,7 @@ public:
                                        <<"time:"<<t.tv_sec<<"sec"<<t.tv_usec<<"usec";
 
                                 fclose(current_recv_file->f->file);
+                                fm->recv_map.erase(fm->recv_map.find(current_recv_file->index));
                                 delete current_recv_file->f;
                                 delete current_recv_file;
                                 current_recv_file = nullptr;
@@ -722,6 +723,7 @@ public:
                                     {
                                         fm->send_queue.pop_front();
                                     }
+                                    fm->send_map.erase(fm->send_map.find(current_send_file->index));
                                     delete current_send_file;
                                     current_send_file = nullptr;
                                 }
