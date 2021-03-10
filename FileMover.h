@@ -11,6 +11,8 @@
 
 #define FM_DEFAULT_RECV_BUFFER_SIZE 1024 * 1024 * 4
 #define FM_DEFAULT_SEND_BUFFER_SIZE 1024 * 1024 * 4
+#define FM_MAX_RECV_BUFFER_SIZE 1024 * 1024 * 100
+#define FM_MAX_SEND_BUFFER_SIZE 1024 * 1024 * 100
 
 #define FM_DEFAULT_MESSAGE_BUFFER_SIZE 1024 * 1024
 #define FM_DEFAULT_STRING_BUFFER_SIZE 1024 * 1024
@@ -984,6 +986,26 @@ public:
                 memcpy(message_buffer.data + message_buffer.pos, value, m_size);
                 push_message(message_buffer.pos, m_size);
                 message_buffer.pos += m_size;
+            }
+        }
+        if(strcmp(cmd, "set rbs") == 0)
+        {
+            if(value)
+            {
+                int size = atoi(value) * 1024 * 1024;
+                if(size > 0 && size < FM_MAX_RECV_BUFFER_SIZE) recv_buffer.resize(size);
+                else qDebug()<<"Set receive buffer size error: wrong size:"<<size;
+                qDebug()<<"Now receive buffer size is:"<<recv_buffer.size;
+            }
+        }
+        if(strcmp(cmd, "set sbs") == 0)
+        {
+            if(value)
+            {
+                int size = atoi(value) * 1024 * 1024;
+                if(size > 0 && size < FM_MAX_SEND_BUFFER_SIZE) send_buffer.resize(size);
+                else qDebug()<<"Set send buffer size error: wrong size:"<<size;
+                qDebug()<<"Now send buffer size is:"<<send_buffer.size;
             }
         }
     }
