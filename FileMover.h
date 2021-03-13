@@ -412,7 +412,7 @@ public:
             }
             std::cout << std::endl;
         }
-        else qDebug()<<"plan is empty";
+        else std::cout << "plan is empty" << std::endl;
     }
     void set_recv_path(file_recv_handler* h, const char* path)
     {
@@ -436,7 +436,7 @@ public:
     {
         if(!send_map.size())
         {
-            qDebug()<<"Local table is empty";
+            std::cout << "local table is empty" << std::endl;
             return;
         }
         auto b = send_map.cbegin();
@@ -453,7 +453,7 @@ public:
     {
         if(!recv_map.size())
         {
-            qDebug()<<"Out table is empty";
+            std::cout << "out table is empty" << std::endl;
             return;
         }
         auto b = recv_map.cbegin();
@@ -470,7 +470,7 @@ public:
     {
         if(!send_queue.size())
         {
-            qDebug()<<"Send Queue is empty";
+            std::cout << "send queue is empty" << std::endl;
             return;
         }
         auto b = send_queue.begin();
@@ -696,7 +696,9 @@ public:
                             {
                                 current_recv_file->read_for_packet += rb;
                                 current_recv_file->prc = 100.0 - ((double) current_recv_file->bytes_left * 100.0 / current_recv_file->f->size);
-                                qDebug()<<"recv progress:"<<current_recv_file->index<<current_recv_file->prc<<'%';
+
+                                std::cout << "recv progress: "<<current_recv_file->index << " " << current_recv_file->prc << " %" << std::endl;
+
                                 current_recv_file->read_now = current_recv_file->bytes_left < (size_t)fm->recv_buffer.size ?
                                                               current_recv_file->bytes_left : fm->recv_buffer.size;
                                 if(current_recv_file->read_for_packet == current_recv_file->packet_size)
@@ -712,10 +714,9 @@ public:
                                 timeval end;
                                 gettimeofday(&end, nullptr);
                                 timeval t = PROFILER::time_dif(&current_recv_file->start, &end);
-                                qDebug()<<"recv file:"<<current_recv_file->index<<current_recv_file->f->path.c_str()
-                                       <<current_recv_file->f
-                                       <<current_recv_file->f->path.size()
-                                       <<"time:"<<t.tv_sec<<"sec"<<t.tv_usec<<"usec";
+
+                                std::cout << "recv file: " << current_recv_file->index << " " << current_recv_file->f->path <<
+                                             "time: " << t.tv_sec << " sec " << t.tv_usec << " usec" << std::endl;
 
                                 fclose(current_recv_file->f->file);
                                 fm->recv_map.erase(fm->recv_map.find(current_recv_file->index));
@@ -730,7 +731,6 @@ public:
                 else
                 {
                     rb = fm->control.unlocked_recv_to(&data_index, sizeof(index_t));
-//                    qDebug()<<"read data index:"<<data_index<<rb;
                     if(rb < 0) break;
                     if(rb < (int)sizeof(index_t)) data_index = 0;
                 }
@@ -920,7 +920,9 @@ public:
 
                                     current_send_file->interuptable = true;
                                     current_send_file->prc = 100.0 - ((double) current_send_file->bytes_left * 100.0 / current_send_file->f->size);
-                                    qDebug()<<"send progress:"<<current_send_file->index<<current_send_file->prc<<'%';
+
+                                    std::cout << "send progress: " << current_send_file->index << " " << current_send_file->prc << " %" <<std::endl;
+
                                     if(current_send_file->connect_next && ++current_send_file->pack_sent == current_send_file->pack_freq)
                                     {
                                         current_send_file->pack_sent = 0;
@@ -932,7 +934,9 @@ public:
                                     timeval end;
                                     gettimeofday(&end, nullptr);
                                     timeval t = PROFILER::time_dif(&current_send_file->start, &end);
-                                    qDebug()<<"sent file:"<<current_send_file->f->name.c_str()<<"time:"<<t.tv_sec<<"sec"<<t.tv_usec<<"usec";
+
+                                    std::cout << "sent file: " << current_send_file->index << " time: " << t.tv_sec << " sec " << t.tv_usec
+                                              << "usec" << std::endl;
 
                                     fclose(current_send_file->f->file);
                                     delete current_send_file->f;
@@ -991,12 +995,10 @@ public:
             }
 
             if(data_index == FM_DISCONNECT_BYTE) break;
-//            if(current_recv_file) qDebug()<<"recv progress:"<<"file:"<<current_recv_file->index<<current_recv_file->prc<<'%';
-//            if(current_send_file) qDebug()<<"send progress:"<<"file:"<<current_send_file->index<<current_send_file->prc<<'%';
         }
 
 
-        qDebug()<<"Main Stream Is Over";
+        std::cout << "Main stream is over" <<std::endl;
     }
 public:
 
@@ -1041,7 +1043,6 @@ public:
                     if(*lex_start >= '0' && *lex_start <= '9' && wait_num)
                     {
                         index = atoi(lex_start);
-//                        qDebug()<<"number:"<<index;
                         wait_num = false;
                         last_lex = num;
                         if(list)
@@ -1053,14 +1054,12 @@ public:
                     if(*lex_start == '-')
                     {
                         char o = *(lex_start + 1);
-//                        qDebug()<<"option:"<<o;
                         last_lex = opt;
                         ii->opt.push_back(o);
                     }
                     if(last_lex == other)
                     {
                         snprintf(buffer, lex_size + 1, "%s", lex_start);
-//                        qDebug()<<"other:"<<buffer;
                         ii->path = lex_start;
                     }
                 }
@@ -1145,7 +1144,7 @@ public:
                 }
                 else delete list;
             }
-            else qDebug()<<"no value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "plan") == 0)
         {
@@ -1168,7 +1167,7 @@ public:
                 }
                 else delete list;
             }
-            else qDebug()<<"no value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "force") == 0)
         {
@@ -1179,9 +1178,9 @@ public:
                 {
                     push_force_request(index);
                 }
-                else qDebug()<<"Wrong Index:"<<index;
+                else std::cout << "Wrong index: " << index << std::endl;
             }
-            else qDebug()<<"no value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "attach") == 0)
         {
@@ -1203,7 +1202,7 @@ public:
                 }
                 else delete list;
             }
-            else qDebug()<<"no value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "planr") == 0)
         {
@@ -1222,7 +1221,7 @@ public:
                 if(list->size()) update_plan(list);
                 delete list;
             }
-            else qDebug()<<"no value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "get plan") == 0)
         {
@@ -1250,7 +1249,7 @@ public:
                 }
                 else delete list;
             }
-            else qDebug()<<"no value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "planp") == 0)
         {
@@ -1274,7 +1273,7 @@ public:
                 }
                 else delete list;
             }
-            else qDebug()<<"no value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "getp") == 0)
         {
@@ -1300,7 +1299,7 @@ public:
                     else push_multi_files_request(list, ii.path);
                 }
             }
-            else qDebug()<<"no value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "get all") == 0)
         {
@@ -1342,7 +1341,7 @@ public:
                 }
                 delete list;
             }
-            else qDebug()<<"no value";
+            else std::cout << "no value" << std::endl;
         }
         //--------------------------------------------------
         if(strcmp(cmd, "info") == 0)
@@ -1370,9 +1369,9 @@ public:
                 int port = atoi(value);
                 if(port > 0 && port <= 65535)
                     open_connection(port);
-                else qDebug()<<"Open Connection Error: Wrong port number:"<<port;
+                else std::cout << "Wrong port number: " << port << std::endl;
             }
-            else qDebug()<<"Open Connection Error: No Value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "connect to") == 0)
         {
@@ -1390,9 +1389,9 @@ public:
                     }
                     connect(port, address);
                 }
-                else qDebug()<<"Connect To Error: Wrong Port Number:"<<port;
+                else std::cout << "Wrong port number: " << port << std::endl;
             }
-            else qDebug()<<"Connect To Error: No Value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "help") == 0)
         {
@@ -1404,33 +1403,7 @@ public:
             {
                 set_default_download_path(value);
             }
-            else qDebug()<<"Set Default Path Error: No Value";
-        }
-        if(strcmp(cmd, "list")==0)
-        {
-            if(value)
-            {
-                DArray<int> list;
-                const char* index = nullptr;
-                list.push_back(atoi(value));
-                while(*value != '\0')
-                {
-                    if(!index && *value == ',') index = value;
-                    ++value;
-                    if(index && *value != ' ')
-                    {
-                        int v = atoi(value);
-                        if(v > 0 && v < (int)recv_map.size())
-                            list.push_back(v);
-                        else
-                        {
-                            qDebug()<<"Wrong index:"<<v;
-                            break;
-                        }
-                        index = nullptr;
-                    }
-                }
-            }
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "load file") == 0)
         {
@@ -1439,7 +1412,7 @@ public:
                 auto handler = prepare_to_send(value);
                 if(handler) push_new_file_handler(handler);
             }
-            else qDebug()<<"No value";
+            else std::cout << "no value" << std::endl;
         }
         if(strcmp(cmd, "otable") == 0)
         {
@@ -1451,10 +1424,6 @@ public:
         }
 
 
-        if(strcmp(cmd, "send table") == 0)
-        {
-//            push_table();
-        }
         if(strcmp(cmd, "m") == 0)
         {
             if(value)
@@ -1471,8 +1440,8 @@ public:
             {
                 int size = atoi(value) * 1024 * 1024;
                 if(size > 0 && size < FM_MAX_RECV_BUFFER_SIZE) recv_buffer.resize(size);
-                else qDebug()<<"Set receive buffer size error: wrong size:"<<size;
-                qDebug()<<"Now receive buffer size is:"<<recv_buffer.size;
+                else std::cout << "Wrong size: " << size << std::endl;
+                std::cout << "Receive buffer size is: " << size << std::endl;
             }
         }
         if(strcmp(cmd, "set sbs") == 0)
@@ -1481,8 +1450,8 @@ public:
             {
                 int size = atoi(value) * 1024 * 1024;
                 if(size > 0 && size < FM_MAX_SEND_BUFFER_SIZE) send_buffer.resize(size);
-                else qDebug()<<"Set send buffer size error: wrong size:"<<size;
-                qDebug()<<"Now send buffer size is:"<<send_buffer.size;
+                else std::cout << "Wrong size: " << size << std::endl;
+                std::cout << "Send buffer size is: " << size << std::endl;
             }
         }
     }
@@ -1493,7 +1462,7 @@ public:
         {
             if( strcmp( b->second->f->path.c_str(), path) == 0 )
             {
-                qDebug()<<"File:"<<path<<"already in system";
+                std::cout << "File already in system:" << path << std::endl;
                 return nullptr;
             }
             ++b;
@@ -1501,7 +1470,7 @@ public:
         FILE* file = fopen(path, "rb");
         if(!file)
         {
-            qDebug()<<"Load file: wrong path";
+            std::cout << "Wrong path" << std::endl;
             return nullptr;
         }
         const char* pi = path;
@@ -1544,7 +1513,6 @@ public:
             h->index = send_map.size() + system_index_shift;
         }
 
-        qDebug()<<"NEW INDEX:"<<h->index;
         h->bytes_left = size;
         h->flush_now = h->bytes_left < (size_t)send_buffer.size ? h->bytes_left : send_buffer.size;
         send_map[h->index] = h;

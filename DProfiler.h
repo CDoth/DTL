@@ -1,11 +1,12 @@
 #ifndef DPROFILER_H
 #define DPROFILER_H
-#include <QDebug>
-#include <QString>
-#include <QMap>
 #include <ctime>
 #include <sys/time.h>
 #include <iostream>
+#include <map>
+#include <vector>
+#include <stdio.h>
+#include <string.h>
 
 namespace PROFILER {
 
@@ -15,13 +16,11 @@ namespace PROFILER {
         unsigned start_time = clock();
         start[NAME] = start_time;
         std::cout << "---------- START BLOCK " << NAME.c_str() << "on:" << start_time <<std::endl;
-//        qDebug()<<"---------- START BLOCK "<<NAME.c_str()<<"on:"<<start_time;
     }
     static void END_PBLOCK(const std::string &NAME)
     {
         unsigned end_time = clock();
         std::cout << "---------- END BLOCK" << NAME.c_str() << "on:" << end_time << "INTERVAL:" << end_time - start[NAME] <<std::endl;
-//        qDebug()<<"---------- END BLOCK"<<NAME.c_str()<<"on:"<<end_time<<"INTERVAL:"<<end_time - start[NAME];
     }
 //============================================================================================
     typedef struct tp
