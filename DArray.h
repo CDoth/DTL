@@ -1,7 +1,6 @@
 #ifndef DARRAY_H
 #define DARRAY_H
 
-#include <QDebug>
 #include "DWatcher.h"
 #include "dmem.h"
 
@@ -174,7 +173,7 @@ private:
             if( s > alloc || (s < alloc && s >= size) )
             {
                 alloc = s;
-                data = reget_mem(data, _real_size( alloc ));
+                data = reget_mem((char*)data, _real_size( alloc ));
             }
         }
         void* _get_place()
@@ -186,7 +185,7 @@ private:
         void  _reserve_up()
         {
             alloc = ( size + 1 ) * 2;
-            data = reget_mem(data, _real_size( alloc ));
+            data = reget_mem((char*)data, _real_size( alloc ));
         }
     };
     DDualWatcher* w;

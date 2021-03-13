@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string>
 
-#include "QDebug"
 static unsigned int __dmem_alloced = 0;
 #define NOT_FREE_DMEM __dmem_alloced
 struct inc_alloced {~inc_alloced(){++__dmem_alloced;}};

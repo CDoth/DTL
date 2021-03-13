@@ -1,10 +1,9 @@
 #include "DTcp.h"
 #include <iostream>
-#include <QDebug>
 
 #define LOCAL_ERROR(message, ec) DTcp::local_error(message, ec)
 #define FUNC_ERROR(message, ec) DTcp::func_error(__func__, message, ec)
-#define WSAE WSAGetLastError()
+
 
 
 int DTcp::receive_to(void* data, int len, int flag)
@@ -25,9 +24,6 @@ int DTcp::send_it(const void* data, int len, int flag)
     int sb = 0;
     if(  (sb = send(_socket_out, (const char*)data, len, flag)) < 0)
     {
-        qDebug()<<"send() error"<<sb<<WSAE<<errno;
-//        while(WSAE == WSAEWOULDBLOCK)
-//            sb = send(_socket_out, (char*)data, len, flag);
     }
     return sb;
 }
@@ -35,7 +31,6 @@ int DTcp::unlocked_recv_to(void* data, int len, int flag)
 {
     int rb = 0;
     rb = recv(_socket_out, (char*)data + pr.total_rb, len - pr.total_rb, flag);
-//    qDebug()<<"unlocked_recv_to():"<<rb<<*(int*)data;
     if(rb >= 0) pr.total_rb += rb;
     else return rb;
     if(pr.total_rb == len) {int temp = pr.total_rb; pr.total_rb = 0; return temp;}
@@ -67,7 +62,6 @@ int DTcp::recv_packet(void* data, int flag1, int flag2)
     do
     {
         rb = recv(_socket_out, d + tb, packet_size - tb, flag2);
-        qDebug()<<"recv_packet:"<<rb;
         if( rb > 0) tb += rb;
         else return tb;
     }while(tb < packet_size);
@@ -146,10 +140,18 @@ int DTcp::set_in(const int &port, const char *address)
     if(port >= 0 && port <= 65535)
     {
         _addr_inner.sin_port = htons(port);
+
+#ifdef _WIN32
         if(address)
             _addr_inner.sin_addr.S_un.S_addr = inet_addr(address);
         else
             _addr_inner.sin_addr.S_un.S_addr = htonl (INADDR_ANY);
+#else
+        if(address)
+            _addr_inner.sin_addr.s_addr = inet_addr(address);
+        else
+            _addr_inner.sin_addr.s_addr = htonl (INADDR_ANY);
+#endif
     }
     else
     {
@@ -163,10 +165,17 @@ int DTcp::set_out(const int &port, const char *address)
     if(port >= 0 && port <= 65535)
     {
         _addr_outer.sin_port = htons(port);
+#ifdef _WIN32
         if(address)
             _addr_outer.sin_addr.S_un.S_addr = inet_addr(address);
         else
             _addr_outer.sin_addr.S_un.S_addr = htonl (INADDR_ANY);
+#else
+        if(address)
+            _addr_outer.sin_addr.s_addr = inet_addr(address);
+        else
+            _addr_outer.sin_addr.s_addr = htonl (INADDR_ANY);
+#endif
     }
     else
     {
@@ -214,7 +223,7 @@ SOCKET DTcp::__accept(SOCKET s, sockaddr *addr, int *addrlen)
         return INVALID_SOCKET;
     }
     SOCKET accept_socket = INVALID_SOCKET;
-    if( (accept_socket = accept(s, addr, addrlen)) == INVALID_SOCKET)
+    if( (accept_socket = accept(s, addr, (socklen_t *)addrlen)) == INVALID_SOCKET)
     {
         FUNC_ERROR("accept() fault", WSAE);
         return INVALID_SOCKET;
@@ -226,13 +235,17 @@ int DTcp::__closesocket(SOCKET s)
     if(!is_valid_socket(s))
     {
         FUNC_ERROR("wrong socket", s);
-        return SOCKET_ERROR;
+        return INVALID_SOCKET;
     }
-    if(closesocket(s) == SOCKET_ERROR)
+#ifdef _WIN32
+    if(closesocket(s) == INVALID_SOCKET)
     {
         FUNC_ERROR("closesocket() fault", WSAE);
-        return SOCKET_ERROR;
+        return INVALID_SOCKET;
     }
+#else
+    close(s);
+#endif
 
     return 0;
 }
@@ -273,18 +286,8 @@ int DTcp::__connect(SOCKET s, const sockaddr *name, int namelen)
     }
     if(connect(s, name, namelen) == SOCKET_ERROR)
     {
-
-        while(WSAE == WSAEWOULDBLOCK)
-        {
-            qDebug()<<"TRY CONNECT AFTER WSAEWOULDBLOCK";
-            connect(s, name, namelen);
-        }
-        qDebug()<<"WSA Error:"<<WSAE;
+        connect(s, name, namelen);
         return WSAE;
-
-//        FUNC_ERROR("connect() fault", WSAE);
-//        qDebug()<<"errno:"<<errno;
-//        return SOCKET_ERROR;
     }
     return 0;
 }
@@ -307,8 +310,13 @@ int DTcp::__shutdown(SOCKET s, int how)
 DTcp::DTcp()
 {
     _me = Default;
+    #ifdef _WIN32
     ZeroMemory(&_addr_inner,sizeof(sockaddr_in));
     ZeroMemory(&_addr_outer,sizeof(sockaddr_in));
+    #else
+    memset(&_addr_inner, 0, sizeof(sockaddr_in));
+    memset(&_addr_outer, 0, sizeof(sockaddr_in));
+    #endif
     _addr_inner.sin_family = AF_INET;
     _addr_outer.sin_family = AF_INET;
 
@@ -324,13 +332,25 @@ DTcp::DTcp()
 }
 void DTcp::unblock_in()
 {
+#ifdef _WIN32
     BOOL l = TRUE;
     ioctlsocket(_socket_in, FIONBIO, (unsigned long* ) &l);
+#else
+    int flags = fcntl(_socket_in, F_GETFL, 0);
+    flags |= O_NONBLOCK;
+    fcntl(_socket_in, F_SETFL, flags);
+#endif
 }
 void DTcp::unblock_out()
 {
+#ifdef _WIN32
     BOOL l = TRUE;
     ioctlsocket(_socket_out, FIONBIO, (unsigned long* ) &l);
+#else
+    int flags = fcntl(_socket_out, F_GETFL, 0);
+    flags |= O_NONBLOCK;
+    fcntl(_socket_out, F_SETFL, flags);
+#endif
 }
 int DTcp::make_server(int port, const char *address)
 {

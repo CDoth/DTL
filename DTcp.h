@@ -1,17 +1,41 @@
 #ifndef DTCP_H
 #define DTCP_H
-
-
-#include <winsock2.h>
-#include <windows.h>
 #include <stdint.h>
 #include "DArray.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <windows.h>
+#else
+
+#define SOCKET int
+#define INVALID_SOCKET -1
+#define SD_BOTH SHUT_RDWR
+
+#define WSAE INVALID_SOCKET
+#define SOCKET_ERROR INVALID_SOCKET
+
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <cstring> //memset
+#include <unistd.h> //close
+
+#endif
+
+
+#ifdef _WIN32
+#define WSAE WSAGetLastError()
 static void winsock_start()
 {
     char buff[1024];
     WSAStartup(0x202,(WSADATA *)&buff[0]);
 }
+#endif
+
+
 class DTcp
 {
 public:
