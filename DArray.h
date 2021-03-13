@@ -61,6 +61,7 @@ public:
     {
         complex_iterator() : p(nullptr){}
         complex_iterator(T** _p) : p(_p){}
+        inline operator T**() {return p;}
         inline T& operator*() const {return **p;}
         inline T* operator->() const {return *p;}
         inline complex_iterator& operator++(){++p; return *this;}
@@ -79,7 +80,7 @@ public:
     {
         const_complex_iterator() : p(nullptr){}
         const_complex_iterator(T*const* _p) : p(_p){}
-        inline  operator T*const*() {return p;}
+        inline operator T*const*() {return p;}
         inline const T& operator*() const {return **p;}
         inline const T* operator->() const {return *p;}
         inline const_complex_iterator& operator++(){++p; return *this;}
@@ -123,16 +124,42 @@ public:
 //-------------------------------------------------------------------------------------------
     int cell_size() const {return sizeof(stored_type);}
     int reserved() const {return data()->alloc;}
+    int available() const {return data()->alloc - data()->size;}
     bool empty() const {return !data()->size;}
     const T& constFront() const {return _get_ref(0);}
     const T& constBack() const {return _get_ref(data()->size-1);}
     const T& operator[](int i) const {return _get_ref(i);}
     const T& at(int i) const {if(i >= 0 && i < data()->size) return _get_ref(i);}
 
+    int count(const T& t) const
+    {
+        auto b = constBegin();
+        auto e = constEnd();
+        int i=0;
+        while( b != e ) if( *b++ == t ) ++i;
+        return i;
+    }
     void append(){detach();  _push(data()->_get_place(), __metatype());}
     void append(const T& t) {detach();  _push(t, data()->_get_place(), __metatype());}
     void append(const T& t, int n) {detach(); while(n--) append(t);}
+    void append(const DArray<T, WriteModel>& from)
+    {
+        if(__metatype::DirectPlacement && std::is_trivial<T>::value)
+        {
+                if(available() < from.size()) reserve(  reserved() + (from.size() - available()) );
+                memcpy(end(), from.constBegin(), from.size() * sizeof(stored_type));
+                data()->size += from.size();
+        }
+        else
+        {
+            auto b = from.constBegin();
+            auto e = from.constEnd();
+            while( b != e )append(*b++);
+        }
+
+    }
     void reserve(int s) {detach(); data()->_reserve(s);}
+    void remove(iterator it){detach();_remove(it, __metatype());}
     void remove_all() {detach(); _destruct(__metatype());}
     void remove_by_index(int i) {detach(); _remove(i, __metatype());}
     void remove(const T& v)
@@ -151,9 +178,11 @@ public:
     void clear() {detach(); *this = DArray();}
     T& front() {detach(); return _get_ref(0);}
     T& back() {detach(); return _get_ref(data()->size-1);}
-    void push_back(const T& v) {detach(); append(v);}
-    void replace(int i, const T& v) {if(i >= 0 && i < data()->size){detach(); _get_ref(i) = v;}}
-    void swap(DArray& with){std::swap(w, with.w);}
+    void push_back(const T& t) {append(t);}
+    void pop_back() {detach(); _remove(data()->size-1, __metatype());}
+    void pop_front() {detach(); _remove(0, __metatype());}
+    void replace(int i, const T& v) {if(i >= 0 && i < data()->size) {detach(); _get_ref(i) = v;}}
+    void swap(DArray& with){detach();  std::swap(w, with.w);}
 private:
     struct Data
     {
@@ -242,6 +271,18 @@ private:
         *reinterpret_cast<T**>(place) = new T(t);
     }
 
+    void _remove( iterator it, SmallType)
+    {
+        if(!std::is_trivial<T>::value) it->~T();
+        memcpy( it,  it+1,  (constEnd() - (it+1)) * sizeof(stored_type)  );
+        --data()->size;
+    }
+    void _remove( iterator it, LargeType )
+    {
+        delete &*it;
+        memcpy( it,  it+1,  (constEnd() - (it+1)) * sizeof(stored_type)  );
+        --data()->size;
+    }
     void _remove( int i, SmallType )
     {
         if(!std::is_trivial<T>::value) reinterpret_cast<T*>(data()->t() + i)->~T();

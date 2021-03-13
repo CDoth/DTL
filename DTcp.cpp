@@ -223,11 +223,20 @@ SOCKET DTcp::__accept(SOCKET s, sockaddr *addr, int *addrlen)
         return INVALID_SOCKET;
     }
     SOCKET accept_socket = INVALID_SOCKET;
+
+#ifdef _WIN32
+    if( (accept_socket = accept(s, addr, addrlen)) == INVALID_SOCKET)
+    {
+        FUNC_ERROR("accept() fault", WSAE);
+        return INVALID_SOCKET;
+    }
+#else
     if( (accept_socket = accept(s, addr, (socklen_t *)addrlen)) == INVALID_SOCKET)
     {
         FUNC_ERROR("accept() fault", WSAE);
         return INVALID_SOCKET;
     }
+#endif
     return accept_socket;
 }
 int DTcp::__closesocket(SOCKET s)

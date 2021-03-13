@@ -53,14 +53,12 @@ public:
     int wait_connection();
     int try_connect();
 
-//    void forced_send_it(const void* data, int len, int flag = 0);
     int send_it(const void* data, int len, int flag = 0);
     int unlocked_send_it(const void* data, int len, int flag = 0);
     int send_packet(const void* data, int len, int flag1 = 0, int flag2 = 0);
     int unlocked_send_packet(const void* data, int len, int flag1 = 0, int flag2 = 0);
 
 
-//    void forced_receive_to(void* data, int len, int flag = 0);
     int receive_to(void* data, int len, int flag = 0);
     int unlocked_recv_to(void* data, int len, int flag = 0);
     int recv_packet(void* data, int flag1 = 0, int flag2 = 0);

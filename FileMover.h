@@ -29,7 +29,12 @@ enum header_type
     MultiFilesRequest = 2012,
     TableRequest = 3003,
     Message = 4004,
-    NoType = 0
+    NoType = 0,
+
+    PlanFile = 2022,
+    ForceRequest = 2032,
+    AttachRequest = 2042,
+    MultiPlanFile = 2052,
 };
 class FileMover
 {
@@ -42,12 +47,10 @@ public:
         recv_buffer.resize(FM_DEFAULT_RECV_BUFFER_SIZE);
         string_buffer.resize(FM_DEFAULT_STRING_BUFFER_SIZE);
 
-        set_default_download_path(FM_DEFAULT_DOWNLOAD_PATH);
     }
     typedef std::string string;
     typedef uint64_t file_size_t;
 
-//    typedef uint8_t index_t;
     typedef uint32_t index_t;
 
     typedef uint32_t string_size;
@@ -158,6 +161,9 @@ public:
 
 
 
+    typedef DArray<index_t> file_list;
+    DArray<file_list*>                           recv_plan;
+
     std::map<index_t, file_send_handler*>        send_map;
     std::deque<file_send_handler*>               send_queue;
 
@@ -174,6 +180,254 @@ public:
     };
 
 
+    //---------------------------------------------------- restore
+    void plan_to(index_t to, file_list* files, const char* path = nullptr)
+    {
+        for(int i=0;i!=files->size();++i) set_recv_path(recv_map[files->at(i)], path);
+        update_plan(files);
+        if(files->size())
+        {
+            for(int i=0;i!=recv_plan.size();++i)
+            {
+                file_list* l = recv_plan[i];
+                for(int j=0;j!=l->size();++j) if( l->at(j) == to ) l->append(*files);
+            }
+        }
+    }
+    void plan_multifiles(file_list* files, const char* path = nullptr)
+    {
+        update_plan(files);
+        if(files->size())
+        {
+            if(files->size() == 1)
+            {
+                plan_file(files->constFront());
+            }
+            else
+            {
+                for(int i=0;i!=files->size();++i) set_recv_path(recv_map[files->at(i)], path);
+                recv_plan.push_back(files);
+            }
+        }
+    }
+    void plan_file(index_t file_index, const char* path = nullptr)
+    {
+        update_plan(file_index);
+        set_recv_path(recv_map[file_index], path);
+        file_list* l = new file_list;
+        l->push_back(file_index);
+        recv_plan.push_back(l);
+    }
+    void update_plan(file_list* files)
+    {
+        for(int i=0;i!=recv_plan.size();++i)
+        {
+            file_list* l = recv_plan[i];
+            for(int j=0;j!=l->size();++j)
+            {
+                for(int k=0;k!=files->size();++k)
+                {
+                    if(l->at(j) == files->at(k))
+                    {
+                        l->remove_by_index(j--);
+                        break;
+                    }
+                }
+            }
+            if(l->empty())
+            {
+                recv_plan.remove(l);
+                delete l;
+                --i;
+            }
+        }
+    }
+    void update_plan(index_t file_index)
+    {
+        for(int i=0;i!=recv_plan.size();++i)
+        {
+            file_list* l = recv_plan[i];
+            for(int j=0;j!=l->size();++j)
+            {
+                if(l->at(j) == file_index)
+                {
+                    l->remove_by_index(j--);
+                    break;
+                }
+            }
+            if(l->empty())
+            {
+                recv_plan.remove(l);
+                delete l;
+                --i;
+            }
+        }
+    }
+    void push_force_request(index_t file_index, const char* path = nullptr)
+    {
+        set_recv_path(recv_map[file_index], path);
+        specific_data_send_handler* sh;
+        set_mem(sh,1);
+        sh->type = ForceRequest;
+        int* index = get_mem<int>(1);
+        *index = file_index;
+        sh->data = index;
+        specific_queue.push(sh);
+    }
+    void push_file_request(index_t file_index, const char* path = nullptr)
+    {
+        set_recv_path(recv_map[file_index], path);
+        specific_data_send_handler* sh;
+        set_mem(sh,1);
+        sh->type = FileRequest;
+        int* index = get_mem<int>(1);
+        *index = file_index;
+        sh->data = index;
+        specific_queue.push(sh);
+    }
+    void push_attach_request(DArray<index_t>* files, const char* path = nullptr)
+    {
+        for(int i=0;i!=files->size();++i) set_recv_path(recv_map[files->at(i)], path);
+        specific_data_send_handler* sh;
+        set_mem(sh,1);
+        sh->type = AttachRequest;
+        sh->data = files;
+        specific_queue.push(sh);
+    }
+    void push_multi_files_request(DArray<index_t>* files, const char* path = nullptr)
+    {
+        if(files->size() == 1)
+        {
+            push_file_request(files->front());
+            delete files;
+            return;
+        }
+        for(int i=0;i!=files->size();++i) set_recv_path(recv_map[files->at(i)], path);
+        specific_data_send_handler* sh;
+        set_mem(sh, 1);
+        sh->type = MultiFilesRequest;
+        sh->data = files;
+        specific_queue.push(sh);
+    }
+    void start_plan()
+    {
+        auto b = recv_plan.begin();
+        auto e = recv_plan.end();
+        while( b != e ) push_multi_files_request(*b++, nullptr);
+        recv_plan.clear();
+    }
+    void attach_files(const DArray<index_t>& files) //ms with current
+    {
+        if(send_queue.size())
+        {
+            file_send_handler* h = nullptr;
+            file_send_handler* connect_to = send_queue.front();
+            auto b = files.constBegin();
+            auto e = files.constEnd();
+            while( b != e )
+            {
+                h = send_map[*b];
+                if(connect_to->connect_next)
+                {
+                    auto old_next = connect_to->connect_next;
+                    h->connect_next = old_next;
+                    h->connect_prev = connect_to;
+                    old_next->connect_prev = h;
+                    connect_to->connect_next = h;
+                }
+                else
+                {
+                    h->connect_next = connect_to;
+                    h->connect_prev = connect_to;
+                    connect_to->connect_prev = h;
+                    connect_to->connect_next = h;
+                }
+                connect_to = h;
+                ++b;
+            }
+        }
+        else
+        {
+            push_ms_files(files);
+        }
+    }
+    void push_file(index_t file_index)
+    {
+        file_send_handler* h = send_map[file_index];
+        send_queue.push_back(h);
+    }
+    void insert_file(index_t file_index)
+    {
+        send_queue.insert(send_queue.begin(), send_map[file_index]);
+    }
+    void push_files(const DArray<index_t>& files)
+    {
+        file_send_handler* h = nullptr;
+        for(int i=0;i!= files.size();++i)
+        {
+            h = send_map[files[i]];
+            send_queue.push_back(h);
+        }
+    }
+    void push_ms_files(const DArray<index_t>& files)
+    {
+        file_send_handler* first = send_map[files.constFront()];
+        if(files.size() > 1)
+        {
+            file_send_handler* last  = first;
+            auto b = files.constBegin() + 1;
+            auto e = files.constEnd();
+            while( b != e )
+            {
+                auto curr = send_map[*b];
+                last->connect_next = curr;
+                curr->connect_prev = last;
+                last = curr;
+                ++b;
+            }
+            last->connect_next = first;
+            first->connect_prev = last;
+        }
+        send_queue.push_back(first);
+    }
+    void print_plan() const
+    {
+        if(recv_plan.size())
+        {
+            auto b = recv_plan.constBegin();
+            auto e = recv_plan.constEnd();
+            file_list* l = nullptr;
+            while( b != e )
+            {
+                l = *b;
+                if(l->size() > 1) std::cout << "(";
+                for(int i=0;i!=l->size();++i)
+                {
+                    std::cout << l->at(i);
+                    if(i != l->size() - 1) std::cout << ", ";
+                }
+                if(l->size() > 1) std::cout << ")";
+                if( b != e-1 ) std::cout << ", ";
+                ++b;
+            }
+            std::cout << std::endl;
+        }
+        else qDebug()<<"plan is empty";
+    }
+    void set_recv_path(file_recv_handler* h, const char* path)
+    {
+        if(path)
+        {
+            h->f->path = path;
+            h->f->path.append(h->f->name);
+        }
+        else if(h->f->path.empty())
+        {
+            h->f->path = default_path;
+            h->f->path.append(h->f->name);
+        }
+    }
+    //------------------------------------------------------------
     void print_file_info(const file_info* fi) const
     {
         std::cout << "File: " << fi->name << " " << fi->size << std::endl;
@@ -223,29 +477,6 @@ public:
         auto e = send_queue.end();
         while( b != e ) print_file_info((*b++)->f);
     }
-
-    void push_files(const DArray<int>& files)
-    {
-        file_send_handler* first = send_map[files.constFront()];
-        file_send_handler* last  = first;
-        auto b = files.constBegin() + 1;
-        auto e = files.constEnd();
-        while( b != e )
-        {
-            auto curr = send_map[*b];
-            last->connect_next = curr;
-            curr->connect_prev = last;
-            curr = last;
-            ++b;
-        }
-        last->connect_next = first;
-        first->connect_prev = last;
-        send_queue.push_back(first);
-    }
-    void push_file(int file_index)
-    {
-        send_queue.push_back(send_map[file_index]);
-    }
     void push_new_file_handler(file_send_handler* f)
     {
         if(send_map.size())
@@ -265,33 +496,6 @@ public:
         sh->data = nullptr;
         specific_queue.push(sh);
     }
-    void push_file_request(int file_index, const char* path = nullptr)
-    {
-        recv_map[file_index]->f->path = path ? path : default_path;
-        recv_map[file_index]->f->path.append(recv_map[file_index]->f->name);
-
-        specific_data_send_handler* sh;
-        set_mem(sh,1);
-        sh->type = FileRequest;
-        int* index = get_mem<int>(1);
-        *index = file_index;
-        sh->data = index;
-        specific_queue.push(sh);
-    }
-    void push_multi_files_request(const DArray<int>& files, const char* path = nullptr)
-    {
-        for(int i=0;i!=files.size();++i)
-        {
-            recv_map[files[i]]->f->path = path ? path : default_path;
-            recv_map[files[i]]->f->path.append(recv_map[files[i]]->f->name);
-        }
-        specific_data_send_handler* sh;
-        set_mem(sh, 1);
-        sh->type = MultiFilesRequest;
-        DArray<int>* _files = new DArray<int>(files);
-        sh->data = _files;
-        specific_queue.push(sh);
-    }
     void push_message(int begin, int size)
     {
         specific_data_send_handler* sh;
@@ -302,37 +506,6 @@ public:
         md->size = size;
         sh->data = md;
         specific_queue.push(sh);
-    }
-    void force_file(int file_index)
-    {
-//        if(files_queue.size())
-//        {
-//            file_send_handler* fh = new file_send_handler;
-//            fh->f = local_table[file_index];
-//            fh->interuptable = true;
-//            fh->connect_next = nullptr;
-//            fh->connect_prev = nullptr;
-//            fh->pack_freq = 1;
-//            fh->multisending_index = last_ms_file++;
-//            fh->initial_sent = false;
-//            fh->index = file_index;
-//            file_send_handler* curr = files_queue.front();
-//            file_send_handler* next = curr->connect_next;
-
-//            if(next)
-//            {
-//                curr->connect_next->connect_prev = fh;
-//                fh->connect_next = curr->connect_next;
-//                curr->connect_next = fh;
-//            }
-//            else
-//            {
-//                fh->connect_next = curr;
-//                curr->connect_next = fh;
-//                curr->connect_prev = fh;
-//            }
-//            fh->connect_prev = curr;
-//        }
     }
     static void stream(FileMover* fm)
     {
@@ -350,7 +523,7 @@ public:
         index_t data_index = 0;
         int rb = 0;
         header_type rtype = NoType;
-        DArray<int> files;
+        DArray<index_t> files;
 
         int ms_files = 0;
         int ms_size = 0;
@@ -383,7 +556,6 @@ public:
                 {
                     if(data_index == FM_NEW_DATA_BYTE)
                     {
-                        qDebug()<<"new data block";
                         if(rtype == NoType)
                         {
                             rb = fm->control.receive_to(&rtype, sizeof(header_type));
@@ -404,7 +576,6 @@ public:
                             }
                             if(rc.unlocked_recv())
                             {
-                                qDebug()<<"get new file:"<<new_file->index;
                                 new_file->f->name = fm->string_buffer.data;
                                 fm->recv_map[new_file->index] = new_file;
                                 new_file = nullptr;
@@ -441,7 +612,6 @@ public:
                                 h->read_now = (size_t)h->packet_size < fm->recv_buffer.size ? h->packet_size : fm->recv_buffer.size;
                                 rtype = NoType;
                                 data_index = 0;
-                                qDebug()<<"get File header:"<<index<<h->f->name.c_str()<<h->f->path.c_str()<<h->f->size;
                                 index = 0;
                             }
                             break;
@@ -451,7 +621,6 @@ public:
                             rb = fm->control.unlocked_recv_to(&index, sizeof(index_t));
                             if(rb == sizeof(index_t))
                             {
-                                qDebug()<<"get file request:"<<index;
                                 rtype = NoType;
                                 data_index = 0;
                                 fm->push_file(index);
@@ -462,26 +631,53 @@ public:
                         }
                         case MultiFilesRequest:
                         {
-                            if(!ms_size) while( fm->control.receive_to(&ms_size, sizeof(int)) <= 0 );
-                            else
+                            rb = fm->control.unlocked_recv_packet(fm->string_buffer.data, &packet_size);
+                            if(packet_size && rb == packet_size)
                             {
-                                int index = -1;
-                                rb = fm->control.receive_to(&index, sizeof(int));
-                                if(rb == sizeof(int))
+                                int size = packet_size/sizeof(int);
+                                files.reserve(size);
+                                int* a = (int*)fm->string_buffer.data;
+                                for(int i=0;i!=size;++i)
                                 {
-                                    ++ms_files;
-                                    files.push_back(index);
+                                    files.push_back(a[i]);
                                 }
-                                if(ms_files == ms_size)
+                                fm->push_ms_files(files);
+                                files.clear();
+                                rtype = NoType;
+                                data_index = 0;
+                            }
+
+                            break;
+                        }
+                        case AttachRequest:
+                        {
+                            rb = fm->control.unlocked_recv_packet(fm->string_buffer.data, &packet_size);
+                            if(packet_size && rb == packet_size)
+                            {
+                                int size = packet_size/sizeof(int);
+                                files.reserve(size);
+                                int* a = (int*)fm->string_buffer.data;
+                                for(int i=0;i!=size;++i)
                                 {
-                                    rtype = NoType;
-                                    data_index = 0;
-                                    ms_size = 0;
-                                    ms_files = 0;
-                                    fm->push_files(files);
-                                    files.clear();
-                                    qDebug()<<"get MultiFilesRequest"<<files.size();
+                                    files.push_back(a[i]);
                                 }
+                                fm->attach_files(files);
+                                files.clear();
+                                rtype = NoType;
+                                data_index = 0;
+                            }
+                            break;
+                        }
+                        case ForceRequest:
+                        {
+                            rb = fm->control.unlocked_recv_to(&index, sizeof(index_t));
+                            if(rb == sizeof(index_t))
+                            {
+                                rtype = NoType;
+                                data_index = 0;
+                                fm->insert_file(index);
+                                current_send_file = nullptr;
+                                index = 0;
                             }
                             break;
                         }
@@ -547,7 +743,6 @@ public:
                 }
                 if(  ((current_send_file && current_send_file->interuptable) || !current_send_file)  &&  fm->specific_queue.size())
                 {
-                    qDebug()<<"SPEC BLOCK";
                     current_spec = fm->specific_queue.front();
                     switch (current_spec->type)
                     {
@@ -588,7 +783,6 @@ public:
                         }
                         if(sc.unlocked_send())
                         {
-                            qDebug()<<"send file request";
                             fm->specific_queue.pop();
                             free_mem(current_spec->data);
                             free_mem(current_spec);
@@ -624,10 +818,8 @@ public:
                             if(size>7) sc.reserve(size + 3);
                             sc.add_item({&nd_byte, sizeof(index_t), false});
                             sc.add_item({&current_spec->type, sizeof(header_type), false});
-                            sc.add_item({&size, sizeof(index_t), false});
-                            auto b = files->constBegin();
-                            auto e  = files->constEnd();
-                            while( b != e ) sc.add_item({b++, sizeof(int), false});
+                            size *= sizeof(int);
+                            sc.add_item({files->constBegin(), size, true});
                             sc.complete();
                         }
                         if(sc.unlocked_send())
@@ -640,7 +832,48 @@ public:
                         }
                         break;
                     }
-
+                    case ForceRequest:
+                    {
+                        if(sc.empty())
+                        {
+                            int* index = (int*)current_spec->data;
+                            sc.add_item({&nd_byte, sizeof(index_t), false});
+                            sc.add_item({&current_spec->type, sizeof(header_type), false});
+                            sc.add_item({index, sizeof(index_t), false});
+                            sc.complete();
+                        }
+                        if(sc.unlocked_send())
+                        {
+                            fm->specific_queue.pop();
+                            free_mem(current_spec->data);
+                            free_mem(current_spec);
+                            current_spec = nullptr;
+                        }
+                        break;
+                    }
+                    case AttachRequest:
+                    {
+                        if(sc.empty())
+                        {
+                            DArray<int>* files = (DArray<int>*)current_spec->data;
+                            int size = files->size();
+                            if(size>7) sc.reserve(size + 3);
+                            sc.add_item({&nd_byte, sizeof(index_t), false});
+                            sc.add_item({&current_spec->type, sizeof(header_type), false});
+                            size *= sizeof(int);
+                            sc.add_item({files->constBegin(), size, true});
+                            sc.complete();
+                        }
+                        if(sc.unlocked_send())
+                        {
+                            sc.reserve(10);
+                            fm->specific_queue.pop();
+                            delete (DArray<int>*)current_spec->data;
+                            free_mem(current_spec);
+                            current_spec = nullptr;
+                        }
+                        break;
+                    }
                     case File: break;
                     case NoType: break;
                     }
@@ -651,7 +884,6 @@ public:
                     if(!current_send_file) current_send_file = fm->send_queue.front();
                     if(sc.empty() && !current_send_file->initial_sent)
                     {
-                        qDebug()<<"1";
                         current_send_file->interuptable = false;
                         current_send_file->initial_sent = false;
                         sc.add_item({&nd_byte, sizeof(index_t), false});
@@ -663,7 +895,6 @@ public:
                     }
                     if(sc.unlocked_send())
                     {
-                        qDebug()<<"2";
                         current_send_file->interuptable = true;
                         current_send_file->initial_sent = true;
                         gettimeofday(&current_send_file->last, nullptr);
@@ -768,6 +999,81 @@ public:
         qDebug()<<"Main Stream Is Over";
     }
 public:
+
+    struct intr_info
+    {
+        intr_info() : path(nullptr), num(nullptr), unique_num(false) {}
+        DArray<index_t>* num;
+        const char* path;
+        DArray<char> opt;
+
+        bool unique_num;
+    };
+
+    void read(intr_info* ii, const char* read_from)
+    {
+        const char* value = read_from;
+        DArray<index_t>* list = ii->num;
+        int index = 0;
+
+        const char* lex_start = nullptr;
+        int lex_size = 0;
+        bool wait_num = true;
+
+        enum lex_type {num = 1, opt = 2, other = 3};
+        lex_type last_lex = other;
+
+        char buffer[100];
+
+
+        while(1)
+        {
+            if(*value != ' ' && *value != ',' && *value != '\0')
+            {
+                if(!lex_start) lex_start = value;
+                if(lex_start) ++lex_size;
+            }
+            else
+            {
+                if(lex_start)
+                {
+                    last_lex = other;
+                    if(*lex_start >= '0' && *lex_start <= '9' && wait_num)
+                    {
+                        index = atoi(lex_start);
+//                        qDebug()<<"number:"<<index;
+                        wait_num = false;
+                        last_lex = num;
+                        if(list)
+                        {
+                            if((ii->unique_num && list->count(index) == 0) || !ii->unique_num)
+                                list->push_back(index);
+                        }
+                    }
+                    if(*lex_start == '-')
+                    {
+                        char o = *(lex_start + 1);
+//                        qDebug()<<"option:"<<o;
+                        last_lex = opt;
+                        ii->opt.push_back(o);
+                    }
+                    if(last_lex == other)
+                    {
+                        snprintf(buffer, lex_size + 1, "%s", lex_start);
+//                        qDebug()<<"other:"<<buffer;
+                        ii->path = lex_start;
+                    }
+                }
+                if(*value == ',' && last_lex == num) wait_num = true;
+                lex_start = nullptr;
+                lex_size = 0;
+            }
+
+
+            if(*value == '\0') break;
+            ++value;
+        }
+    }
     void disconnect()
     {
         connection_status = false;
@@ -792,6 +1098,8 @@ public:
     }
     void try_command(const char* command)
     {
+        DArray<char> options;
+        options.setMode(ShareWatcher);
         char cmd[30];
         const char* it = command;
         const char* value = nullptr;
@@ -809,6 +1117,234 @@ public:
         }
 
 
+
+        //------------------------------------------ restore
+
+        if(strcmp(cmd, "show plan") == 0)
+        {
+            print_plan();
+        }
+        if(strcmp(cmd, "plan") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                ii.opt = options;
+                ii.opt.setMode(ShareWatcher);
+                ii.unique_num = true;
+                ii.num = new DArray<index_t>;
+                auto list = ii.num;
+                read(&ii, value);
+                for(int i=0;i!=ii.num->size();++i)
+                    if(recv_map.find(ii.num->at(i)) == recv_map.end() ) ii.num->remove_by_index(i--);
+
+                if(ii.num->size())
+                {
+                    if(list->size() == 1) plan_file(list->front(), ii.path);
+                    else for(int i=0;i!=list->size();++i) plan_file(list->at(i), ii.path);
+                }
+                else delete list;
+            }
+            else qDebug()<<"no value";
+        }
+        if(strcmp(cmd, "plan") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                ii.opt = options;
+                ii.opt.setMode(ShareWatcher);
+                ii.unique_num = true;
+                ii.num = new DArray<index_t>;
+                auto list = ii.num;
+                read(&ii, value);
+                for(int i=0;i!=ii.num->size();++i)
+                    if(recv_map.find(ii.num->at(i)) == recv_map.end() ) ii.num->remove_by_index(i--);
+
+                if(ii.num->size())
+                {
+                    if(list->size() == 1) plan_file(list->front(), ii.path);
+                    else for(int i=0;i!=list->size();++i) plan_file(list->at(i), ii.path);
+                }
+                else delete list;
+            }
+            else qDebug()<<"no value";
+        }
+        if(strcmp(cmd, "force") == 0)
+        {
+            if(value)
+            {
+                int index = atoi(value);
+                if(recv_map.find(index) != recv_map.end())
+                {
+                    push_force_request(index);
+                }
+                else qDebug()<<"Wrong Index:"<<index;
+            }
+            else qDebug()<<"no value";
+        }
+        if(strcmp(cmd, "attach") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                ii.opt = options;
+                ii.opt.setMode(ShareWatcher);
+                ii.unique_num = true;
+                ii.num = new DArray<index_t>;
+                auto list = ii.num;
+                read(&ii, value);
+                for(int i=0;i!=ii.num->size();++i)
+                    if(recv_map.find(ii.num->at(i)) == recv_map.end() ) ii.num->remove_by_index(i--);
+
+                if(list->size())
+                {
+                    push_attach_request(list, ii.path);
+                }
+                else delete list;
+            }
+            else qDebug()<<"no value";
+        }
+        if(strcmp(cmd, "planr") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                ii.opt = options;
+                ii.opt.setMode(ShareWatcher);
+                ii.unique_num = true;
+                ii.num = new DArray<index_t>;
+                auto list = ii.num;
+                read(&ii, value);
+                for(int i=0;i!=ii.num->size();++i)
+                    if(recv_map.find(ii.num->at(i)) == recv_map.end() ) ii.num->remove_by_index(i--);
+
+                if(list->size()) update_plan(list);
+                delete list;
+            }
+            else qDebug()<<"no value";
+        }
+        if(strcmp(cmd, "get plan") == 0)
+        {
+            start_plan();
+        }
+        if(strcmp(cmd, "plan to") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                ii.opt = options;
+                ii.opt.setMode(ShareWatcher);
+                ii.unique_num = true;
+                ii.num = new DArray<index_t>;
+                auto list = ii.num;
+                read(&ii, value);
+                int to = list->front();
+                list->pop_front();
+                for(int i=0;i!=ii.num->size();++i)
+                    if(recv_map.find(ii.num->at(i)) == recv_map.end() ) ii.num->remove_by_index(i--);
+
+                if(list->size())
+                {
+                    plan_to(to, list, ii.path);
+                }
+                else delete list;
+            }
+            else qDebug()<<"no value";
+        }
+        if(strcmp(cmd, "planp") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                ii.opt = options;
+                ii.opt.setMode(ShareWatcher);
+                ii.unique_num = true;
+                ii.num = new DArray<index_t>;
+                auto list = ii.num;
+                read(&ii, value);
+                for(int i=0;i!=ii.num->size();++i)
+                    if(recv_map.find(ii.num->at(i)) == recv_map.end()) ii.num->remove_by_index(i--);
+
+
+                if(list->size())
+                {
+                    if(list->size() == 1) plan_file(list->front(), ii.path);
+                    else plan_multifiles(list, ii.path);
+                }
+                else delete list;
+            }
+            else qDebug()<<"no value";
+        }
+        if(strcmp(cmd, "getp") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                ii.opt = options;
+                ii.opt.setMode(ShareWatcher);
+                ii.unique_num = true;
+                ii.num = new DArray<index_t>;
+                auto list = ii.num;
+                read(&ii, value);
+                for(int i=0;i!=ii.num->size();++i)
+                    if(recv_map.find(ii.num->at(i)) == recv_map.end() ) ii.num->remove_by_index(i--);
+
+                if(list->size())
+                {
+                    if(list->size() == 1)
+                    {
+                        push_file_request(list->front(), ii.path);
+                        delete list;
+                    }
+                    else push_multi_files_request(list, ii.path);
+                }
+            }
+            else qDebug()<<"no value";
+        }
+        if(strcmp(cmd, "get all") == 0)
+        {
+            const char* path = nullptr;
+            if(value)
+            {
+                while(*value != '\0')
+                {
+                    if(*value != ' ')
+                    {
+                        path = value;
+                        break;
+                    }
+                    ++value;
+                }
+            }
+            auto b = recv_map.begin();
+            auto e = recv_map.end();
+            while( b != e ) push_file_request(b->first, path), ++b;
+        }
+        if(strcmp(cmd, "get") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                ii.unique_num = true;
+                ii.num = new DArray<index_t>;
+                ii.opt = options;
+                ii.opt.setMode(ShareWatcher);
+                auto list = ii.num;
+                read(&ii, value);
+                for(int i=0;i!=ii.num->size();++i)
+                    if(recv_map.find(ii.num->at(i)) == recv_map.end() ) ii.num->remove_by_index(i--);
+
+                if(list->size())
+                {
+                    if(list->size() == 1) push_file_request(list->front(), ii.path);
+                    else for(int i=0;i!=list->size();++i) push_file_request(list->at(i), ii.path);
+                }
+                delete list;
+            }
+            else qDebug()<<"no value";
+        }
+        //--------------------------------------------------
         if(strcmp(cmd, "info") == 0)
         {
 
@@ -857,38 +1393,6 @@ public:
                 else qDebug()<<"Connect To Error: Wrong Port Number:"<<port;
             }
             else qDebug()<<"Connect To Error: No Value";
-        }
-        if(strcmp(cmd, "get files") == 0)
-        {
-            if(value)
-            {
-                DArray<int> list;
-                const char* path = nullptr;
-                int v = -1;
-                while(*value != '\0')
-                {
-                    if(v < 0 && *value != ' ')
-                    {
-                        v = atoi(value);
-                        if(v>=0 && v < (int)recv_map.size()) list.push_back(v);
-                        else qDebug()<<"Get Files Error: Wrong Index:"<<v;
-                    }
-                    if(v >= 0 && *value == ',') v = -1;
-                    ++value;
-                    if(v >= 0 && *value != ' ' && *value != ',' && *value != '\0' && !path) path = value;
-                }
-                auto b = list.constBegin();
-                auto e = list.constEnd();
-                qDebug()<<"list:";
-                while( b != e)
-                {
-                    qDebug()<<*b++;
-                }
-                qDebug()<<"path:"<<path<<(void*)path;
-
-
-                push_multi_files_request(list, path);
-            }
         }
         if(strcmp(cmd, "help") == 0)
         {
@@ -945,37 +1449,8 @@ public:
         {
             print_local_table();
         }
-        if(strcmp(cmd, "get file") == 0)
-        {
-            if(recv_map.empty())
-            {
-                qDebug()<<"files table is emty!"; return;
-            }
-            if(value)
-            {
-                int index = atoi(value);
-                const char* path = nullptr;
-                while(*value != '\0')
-                {
-                    if(!path && *value == ' ') path = value;
-                    if(path  && *value != ' ') {path = value; break;}
-                    ++value;
-                }
-                if(recv_map.find(index) != recv_map.end()) push_file_request(index, path);
-                else qDebug()<<"get file: wrong index:"<<index;
-            }
-            else qDebug()<<"no value";
-        }
-        if(strcmp(cmd, "force file") == 0)
-        {
-            if(value)
-            {
-                int index = atoi(value);
-                if(index >=0 && index < (int)recv_map.size()) force_file(index);
-                else qDebug()<<"Force File Error: Wrong Index:"<<index;
-            }
-            else qDebug()<<"Force File Error: NoValue";
-        }
+
+
         if(strcmp(cmd, "send table") == 0)
         {
 //            push_table();
