@@ -7,7 +7,8 @@
 #include "iostream"
 #include "thread"
 #include "DProfiler.h"
-#include <mutex>
+#include "DDirReader.h"
+
 #ifdef _WIN32
 #include "QDebug"
 #define _debug qDebug()
@@ -62,6 +63,8 @@ public:
     typedef uint64_t DWORD;
 //private:
 public:
+    DirReader dir;
+    int current_dir_index;
     DTcp control;
     bool connection_status;
 
@@ -173,11 +176,6 @@ public:
         void* data;
     };
 
-    struct file_desc
-    {
-        index_t i;
-        file_size_t shift;
-    };
 
 
     typedef DArray<file_recv_handler*> file_list;
@@ -189,7 +187,6 @@ public:
     std::map<index_t, file_recv_handler*>        recv_map;
     std::queue<index_t> available_index;
 
-
     std::queue<specific_data_send_handler*>      specific_queue;
 
     struct message_data
@@ -198,6 +195,55 @@ public:
         int size;
     };
 
+
+
+    void add_dir(const char* path)
+    {
+        dir.add_dir(path);
+    }
+    void print_dir_list() const
+    {
+        auto b = dir.begin();
+        auto e = dir.end();
+        int n=1;
+        std::cout <<"Open directories:" <<std::endl;
+        std::cout << "-----------------" << std::endl;
+        while (b != e) std::cout << n++ << ": " << (*b++)->full_path << std::endl;
+        std::cout << "-----------------" << std::endl;
+    }
+    void chose_dir(int i)
+    {
+        current_dir_index = --i;
+    }
+    void print_dir(int i) const
+    {
+        --i;
+        auto d = dir.begin() + i;
+        auto b = (*d)->begin();
+        auto e = (*d)->end();
+        int n=1;
+        std::cout << (*d)->full_path << ":" << std::endl;
+        while(b != e)
+        {
+            std::cout << n++ << ": " << (*b).name() << " " << (*b).size() << std::endl;
+            ++b;
+        }
+    }
+    void print_current_dir() const
+    {
+        print_dir(current_dir_index);
+    }
+    void load_file_from_current_dir(int i)
+    {
+        --i;
+        auto d = dir.begin() + current_dir_index;
+        auto file = (*d)->begin() + i;
+
+        _debug << (*file).path().c_str();
+
+        auto handler = prepare_to_send((*file).path().c_str());
+        if(handler) push_new_file_handler(handler);
+    }
     void return_index(index_t index)
     {
         if(index - system_index_shift < send_map.size() - 1 )
@@ -247,16 +293,6 @@ public:
             it->connect_next = to;
             it->connect_prev = to;
         }
-    }
-    size_t get_file_size(const char* path)
-    {
-        std::ifstream f(path, std::ios::in | std::ios::binary);
-        if(f.is_open())
-        {
-            f.seekg(0, std::ios::end);
-            return f.tellg();
-        }
-        else return 0;
     }
     //---------------------------------------------------- restore
     void plan_to(file_recv_handler* to, file_recv_handler* h, const char* path = nullptr)
@@ -1373,6 +1409,56 @@ public:
             else std::cout << "no value" << std::endl;
         }
         //--------------------------------------------------
+        if(strcmp(cmd, "dir") == 0)
+        {
+        }
+        if(strcmp(cmd, "dir add") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                read(&ii, value);
+                add_dir(ii.path);
+            }
+            else std::cout << "no value" << std::endl;
+        }
+        if(strcmp(cmd, "dir list") == 0)
+        {
+            print_dir_list();
+        }
+        if(strcmp(cmd, "dir chose") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                read(&ii, value);
+                int nd = ii.num.front();
+                chose_dir(nd);
+            }
+        }
+        if(strcmp(cmd, "dir show") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                read(&ii, value);
+                int nd = ii.num.front();
+                print_dir(nd);
+            }
+        }
+        if(strcmp(cmd, "dir load") == 0)
+        {
+            if(value)
+            {
+                intr_info ii;
+                read(&ii, value);
+                int i = ii.num.front();
+//                _debug << "index:" << i;
+                load_file_from_current_dir(i);
+            }
+        }
+
+
         if(strcmp(cmd, "info") == 0)
         {
 
@@ -1506,7 +1592,7 @@ public:
         const char* pn = path;
         while(*pi != '\0')
         {
-            if(*pi == '/') pn = pi+1;
+            if(*pi == '/' || *pi == '\\') pn = pi+1;
             ++pi;
         }
         size_t bytes = get_file_size(path);

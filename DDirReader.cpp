@@ -1,5 +1,27 @@
 #include "DDirReader.h"
 
+size_t get_file_size(const char* path)
+{
+    std::ifstream f(path, std::ios::in | std::ios::binary);
+    if(f.is_open())
+    {
+        f.seekg(0, std::ios::end);
+        return f.tellg();
+    }
+    else return 0;
+}
+DirReader::string_t DirReader::file_desc::name() const
+{
+    return _name;
+}
+DirReader::string_t DirReader::file_desc::path() const
+{
+    return pdir->full_path + _name;
+}
+size_t DirReader::file_desc::size() const
+{
+    return _size;
+}
 DirReader::DirReader()
 {
     use_prefix = false;
@@ -9,7 +31,7 @@ DirReader::DirReader(const char* _prefix)
     prefix = _prefix;
     use_prefix = true;
 }
-int DirReader::size()
+int DirReader::size() const
 {
     return directories.size();
 }
@@ -26,20 +48,17 @@ void DirReader::disable_prefix()
 {
     use_prefix = false;
 }
-const DirReader::dir* DirReader::add_dir(const char* _path, const char* _name)
+const DirReader::dir* DirReader::add_dir(const char* _path, const char* specific_name)
 {
     string_t name;
     string_t full_path;
     DIR *DIRECTORY = nullptr;
     struct dirent *ent = nullptr;
     //----------------------------------------------------------- Set name and full path:
-    if(strlen(_name))
-        name = _name;
-    else
-        name = _path;
+    name = specific_name ? specific_name : _path;
 
     if(use_prefix)
-        full_path = prefix + "\\" + _path;
+        full_path = prefix + "/" + _path + "/";
     else
         full_path = _path;
     //----------------------------------------------------------- Check directories with same path:
@@ -65,23 +84,24 @@ const DirReader::dir* DirReader::add_dir(const char* _path, const char* _name)
         return nullptr;
     }
     //----------------------------------------------------------- Read names in current directory (except "." and ".." names):
+    dir* new_dir = nullptr;
+    new_dir = new dir;
+
     std::vector<string_t> pathes;
     std::vector<string_t> names;
+    std::vector<file_desc> fl;
     int c = 0;
     while( (ent = readdir(DIRECTORY)) )
     {
         if( !(!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) )
         {
-            string_t p = full_path + "\\" + ent->d_name;
-            names.push_back(ent->d_name);
-            pathes.push_back(full_path + "\\" + ent->d_name);
-
-            c++;
+            size_t s = get_file_size( (full_path + '/' + ent->d_name).c_str() );
+            if(s) fl.push_back({ent->d_name, s, new_dir});
+            ++c;
         }
     }
     //----------------------------------------------------------- Create, init and push new dir struct:
-    dir* new_dir = nullptr;
-    new_dir = new dir;
+
     if(!new_dir)
     {
         printf("DirReader::add_dir() Error: Bad malloc result\n");
@@ -91,8 +111,7 @@ const DirReader::dir* DirReader::add_dir(const char* _path, const char* _name)
     new_dir->name = name;
     new_dir->full_path = full_path;
     new_dir->size = c;
-    new_dir->fnames = names;
-    new_dir->fpathes = pathes;
+    new_dir->file_list = fl;
 
     directories.push_back(new_dir);
     return new_dir;
@@ -147,11 +166,11 @@ const DirReader::dir* DirReader::get_dir_by_name(const char* _name)
     }
     return lfr_dir;
 }
-DirReader::dir_iterator DirReader::begin()
+DirReader::dir_iterator DirReader::begin() const
 {
     return directories.begin();
 }
-DirReader::dir_iterator DirReader::end()
+DirReader::dir_iterator DirReader::end() const
 {
     return directories.end();
 }
