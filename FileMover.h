@@ -89,12 +89,12 @@ public:
 
     inline bool is_digit(char c) {return (c == '1' || c == '2' || c == '3' || c == '4' || c == '5' ||
                                           c == '6' || c == '7' || c == '8' || c == '9' || c == '0');}
-    inline bool is_number(raw b, char stop)
+    inline bool is_number(raw b, char stop = 0)
     {
         if(is_digit(*b) || *b == '-')
         {
             ++b;
-            while(*b != ' ' && *b != stop && *b != '\0') if(!(is_digit(*b++))) return false;
+            while(*b != ' ' && (!stop || *b != stop) && *b != '\0') if(!(is_digit(*b++))) return false;
         }
         else return false;
         return true;
@@ -116,7 +116,7 @@ public:
             if(*v == ' ') check_it = true;
             else if(check_it)
             {
-                if(is_number(v, ' '))
+                if(is_number(v))
                 {
                     value_t number = atoi(v);
                     if(
@@ -169,13 +169,53 @@ public:
         }
         return list;
     }
-    DArray<char> options(raw v, read_context* context);
-    int number(raw v, read_context* context);
+    DArray<char> options(raw v, read_context* context)
+    {
+        DArray<char> list;
+        read_context* c = context?context:&default_context;
+        v += c->start_pos;
+        raw e = v + c->end_pos;
+        bool check_it = true;
+        while(*v != '\0')
+        {
+            if(*v == ' ') check_it = true;
+            else if(check_it)
+            {
+//                if(*v == c->special1)
+            }
+            if( ++v == e) break;
+        }
+    }
+    int number(raw v, read_context* context)
+    {
+        read_context* c = context?context:&default_context;
+        v += c->start_pos;
+        raw e = v + c->end_pos;
+        bool check_it = true;
+        while(*v != '\0')
+        {
+            if(*v == ' ') check_it = true;
+            else if(check_it)
+            {
+                if(is_number(v))
+                {
+                    value_t number = atoi(v);
+                    if(
+                          (!c->min_filter || number >= c->min)
+                       && (!c->max_filter || number <= c->max)
+                       )
+                        return number;
+                }
+                check_it = false;
+            }
+            if( ++v == e) break;
+        }
+        return 0;
+    }
     char option(raw v, read_context* context);
     raw_pos symbol(raw v, read_context* context);
     raw_pos no_symbol(raw v, read_context* context);
     raw_pos lex(raw v, read_context* context);
-
 };
 
 class FileMover
