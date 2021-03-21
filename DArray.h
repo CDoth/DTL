@@ -4,6 +4,7 @@
 #include "DWatcher.h"
 #include "dmem.h"
 
+#include <QDebug>
 struct FastWriteSlowRead { enum {FastWrite = true}; };
 struct SlowWriteFastRead { enum {FastWrite = false}; };
 
@@ -112,11 +113,19 @@ public:
         {
             w->refDown();
             w = w->otherSide();
+            if(w->otherSideRefs() == 0)
+                w->disconnect();
             w->refUp();
         }
     }
 
-    inline void make_unique(){detach();}
+    inline void make_unique()
+    {
+        w->refDown();
+//        if(w->is_otherSide() && w->otherSideRefs() == 0) delete w->otherSide();
+        w = new DDualWatcher(clone(), CloneWatcher);
+
+    }
 public:
     const char* type_size_name() const {return _type_size(__metatype());}
     const char* type_signature_name() const {return _type_signature(__metatype());}
@@ -183,9 +192,9 @@ public:
     void pop_back() {detach(); _remove(data()->size-1, __metatype());}
     void pop_front() {detach(); _remove(0, __metatype());}
     void replace(int i, const T& v) {if(i >= 0 && i < data()->size) {detach(); _get_ref(i) = v;}}
-    void swap(DArray& with){detach();  std::swap(w, with.w);}
+    void swap(DArray& with){std::swap(w, with.w);}
     void insert(const T& v, int pos) {detach(); _insert(v, pos);}
-private:
+public:
     struct Data
     {
         Data(int cs) : data(nullptr), alloc(0), size(0), cell_size(cs){}
@@ -238,10 +247,14 @@ private:
     {
         if(!w->is_unique())
         {
-            if(w->is_share() && w->otherSideRefs()) w->disconnect(clone());
+            if(w->is_share() && w->otherSideRefs())
+            {
+                w->disconnect(clone());
+            }
             else if(w->is_clone())
             {
                 w->refDown();
+                if(w->sideRefs() == 0) w->disconnect();
                 w = new DDualWatcher(clone(), CloneWatcher);
             }
         }
@@ -278,33 +291,34 @@ private:
 
     void _insert( const T& t, int i)
     {
+        printf("insert: move size: %d\n", (data()->size - i) * sizeof(stored_type));
            data()->_reserve_up();
-           memcpy( (data()->t() + i + 1),(data()->t() + i), (data()->size - i) * sizeof(stored_type));
+           memmove((data()->t() + i + 1),(data()->t() + i), (data()->size - i) * sizeof(stored_type));
            _push(t, data()->t() + i, __metatype());
            ++data()->size;
     }
     void _remove( iterator it, SmallType)
     {
         if(!std::is_trivial<T>::value) it->~T();
-        memcpy( it,  it+1,  (constEnd() - (it+1)) * sizeof(stored_type)  );
+        memmove( it,  it+1,  (constEnd() - (it+1)) * sizeof(stored_type)  );
         --data()->size;
     }
     void _remove( iterator it, LargeType )
     {
         delete &*it;
-        memcpy( it,  it+1,  (constEnd() - (it+1)) * sizeof(stored_type)  );
+        memmove( it,  it+1,  (constEnd() - (it+1)) * sizeof(stored_type)  );
         --data()->size;
     }
     void _remove( int i, SmallType )
     {
         if(!std::is_trivial<T>::value) reinterpret_cast<T*>(data()->t() + i)->~T();
-        memcpy( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1) * sizeof(stored_type)  );
+        memmove( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1) * sizeof(stored_type)  );
         --data()->size;
     }
     void _remove( int i, LargeType )
     {
         delete *reinterpret_cast<T**>(data()->t() + i);
-        memcpy( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1) * sizeof(stored_type)  );
+        memmove( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1) * sizeof(stored_type)  );
         --data()->size;
     }
     const T& _get_ref(int i) const

@@ -17,19 +17,15 @@ enum WatcherMode {ShareWatcher = 1, CloneWatcher = 2};
 struct DDualWatcher
 {
     DDualWatcher(void* _data, WatcherMode _mode) : other_side(nullptr), data(_data), n(1), m(_mode) {}
-    bool is_unique() const {return  refs() == 1;}
+    bool is_unique() const {return refs() == 1;}
     //------------------------------
     int refUp() {return ++n;}
     int refDown() {return --n;}
-    void disconnect()
+    void disconnect(void* _d = nullptr)
     {
+        if(_d) data = _d;
         if(other_side) other_side->other_side = nullptr;
-        other_side = nullptr;
-    }
-    void disconnect(void* _d)
-    {
-        data = _d;
-        if(other_side) other_side->other_side = nullptr;
+//        if(other_side->refs() == 0) delete other_side;
         other_side = nullptr;
     }
     int pull()
@@ -58,7 +54,7 @@ struct DDualWatcher
     WatcherMode mode() const {return m;}
     bool is_clone() const {return m == CloneWatcher;}
     bool is_share() const {return m == ShareWatcher;}
-    bool is_otherSide() const {return (bool)other_side;}
+    bool is_otherSide() const {return other_side != nullptr;}
     //------------------------------
 private:
     DDualWatcher* other_side;
