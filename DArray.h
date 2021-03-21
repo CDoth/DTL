@@ -178,11 +178,13 @@ public:
     void clear() {detach(); *this = DArray();}
     T& front() {detach(); return _get_ref(0);}
     T& back() {detach(); return _get_ref(data()->size-1);}
+    void push_front(const T& t){detach();_insert(t, 0);}
     void push_back(const T& t) {append(t);}
     void pop_back() {detach(); _remove(data()->size-1, __metatype());}
     void pop_front() {detach(); _remove(0, __metatype());}
     void replace(int i, const T& v) {if(i >= 0 && i < data()->size) {detach(); _get_ref(i) = v;}}
     void swap(DArray& with){detach();  std::swap(w, with.w);}
+    void insert(const T& v, int pos) {detach(); _insert(v, pos);}
 private:
     struct Data
     {
@@ -207,14 +209,17 @@ private:
         }
         void* _get_place()
         {
-            if(alloc == size) _reserve_up();
+            _reserve_up();
             return reinterpret_cast<char*>(data) + _real_size(size++);
         }
         int   _real_size(int s) {return s*cell_size;}
         void  _reserve_up()
         {
-            alloc = ( size + 1 ) * 2;
-            data = reget_mem((char*)data, _real_size( alloc ));
+            if(alloc == size)
+            {
+                alloc = ( size + 1 ) * 2;
+                data = reget_mem((char*)data, _real_size( alloc ));
+            }
         }
     };
     DDualWatcher* w;
@@ -271,6 +276,13 @@ private:
         *reinterpret_cast<T**>(place) = new T(t);
     }
 
+    void _insert( const T& t, int i)
+    {
+           data()->_reserve_up();
+           memcpy( (data()->t() + i + 1),(data()->t() + i), (data()->size - i) * sizeof(stored_type));
+           _push(t, data()->t() + i, __metatype());
+           ++data()->size;
+    }
     void _remove( iterator it, SmallType)
     {
         if(!std::is_trivial<T>::value) it->~T();

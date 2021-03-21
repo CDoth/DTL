@@ -2,6 +2,8 @@
 #define DMEM_H
 #include <stdlib.h>
 #include <string>
+#include <iostream>
+#include <cstring>
 
 static unsigned int __dmem_alloced = 0;
 #define NOT_FREE_DMEM __dmem_alloced

@@ -4,16 +4,20 @@
 #include <stdint.h>
 #include <iostream>
 #include <QVector>
-
-static bool buffer_compare(void* buffer1, void* buffer2, int size)
+#include <QDebug>
+static inline bool buffer_compare(const void* buffer1, const void* buffer2, int size)
 {
+    if(buffer1 == nullptr || buffer2 == nullptr) return false;
+
+//    qDebug()<< "-------------- BUFFER COMAPRE ----------";
+
     uint8_t* b1 = (uint8_t*)buffer1;
     uint8_t* b2 = (uint8_t*)buffer2;
     uint8_t* e1 = (uint8_t*)buffer1 + size;
     while(b1!=e1)  if(*b1++ != *b2++) return false;
     return true;
 }
-static int find_bytes_pos(void* sample, void* buffer, int sample_size, int buffer_size)
+static int find_bytes_pos(const void* sample, const void* buffer, int sample_size, int buffer_size)
 {
     if(!sample || !buffer || sample_size < 0 || buffer_size < 0)
         return -1;
@@ -22,20 +26,18 @@ static int find_bytes_pos(void* sample, void* buffer, int sample_size, int buffe
     uint8_t* s = (uint8_t*)sample;
     uint8_t* se = (uint8_t*)sample + sample_size - 1;
     uint8_t* be = (uint8_t*)buffer + buffer_size - sample_size + 1;
-    uint8_t* bse = nullptr;
+    uint8_t* bse = b + sample_size - 1;
 
     int i=0;
     while(b!=be)
     {
-        bse = b + sample_size - 1;
         if(*s == *b && *se == *bse)
-            if(buffer_compare(s,b, sample_size))
-                return i;
-        ++s; ++b; ++i;
+            if(buffer_compare(s,b, sample_size)) return i;
+        ++b; ++bse; ++i;
     }
     return -1;
 }
-static void* find_bytes(void* sample, void* buffer, int sample_size, int buffer_size)
+static const void* find_bytes(const void* sample, const void* buffer, int sample_size, int buffer_size)
 {
     if(!sample || !buffer || sample_size < 0 || buffer_size < 0)
         return nullptr;
@@ -44,15 +46,15 @@ static void* find_bytes(void* sample, void* buffer, int sample_size, int buffer_
     uint8_t* s = (uint8_t*)sample;
     uint8_t* se = (uint8_t*)sample + sample_size - 1;
     uint8_t* be = (uint8_t*)buffer + buffer_size - sample_size + 1;
-    uint8_t* bse = nullptr;
+    uint8_t* bse = b + sample_size - 1;
 
     while(b!=be)
     {
-        bse = b + sample_size - 1;
         if(*s == *b && *se == *bse)
-            if(buffer_compare(s,b, sample_size))
-                return b;
+            if(buffer_compare(s,b, sample_size)) return b;
+        ++b; ++bse;
     }
+
     return nullptr;
 }
 static int find_difference_pos(void* first, void* second, int range)

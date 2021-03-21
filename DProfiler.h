@@ -10,6 +10,7 @@
 
 namespace PROFILER {
 
+    static timeval global_time;
     static std::map<std::string, unsigned> start;
     static void START_PBLOCK(const std::string &NAME)
     {
@@ -31,26 +32,31 @@ namespace PROFILER {
     }tp;
     static std::vector<tp> time_points;
 
-    double fsec_dif(timeval* t1, timeval* t2)
+    static double fsec_dif(timeval* t1, timeval* t2)
     {
         double dif = (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
         return (dif/1000000.0);
     }
-    int sec_dif(timeval* t1, timeval* t2)
+    static int sec_dif(timeval* t1, timeval* t2)
     {
         int dif = (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
         return (int)(dif/1000000L);
     }
-    int usec_dif(timeval* t1, timeval* t2)
+    static int usec_dif(timeval* t1, timeval* t2)
     {
         return (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
     }
-    timeval time_dif(timeval* t1, timeval* t2)
+    static timeval time_dif(timeval* t1, timeval* t2)
     {
         int dif = (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
         int sec = (int)(dif/1000000L);
         int usec = dif - sec*1000000L;
         return {sec, usec};
+    }
+    static inline timeval gettime()
+    {
+        gettimeofday(&global_time, nullptr);
+        return global_time;
     }
     static int find_tp(int name)
     {

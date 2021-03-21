@@ -1,5 +1,5 @@
 #include "DDirReader.h"
-
+#include <QDebug>
 size_t get_file_size(const char* path)
 {
     std::ifstream f(path, std::ios::in | std::ios::binary);
@@ -96,8 +96,7 @@ const DirReader::dir* DirReader::add_dir(const char* _path, const char* specific
         if( !(!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) )
         {
             size_t s = get_file_size( (full_path + '/' + ent->d_name).c_str() );
-            if(s) fl.push_back({ent->d_name, s, new_dir});
-            ++c;
+            if(s) fl.push_back({ent->d_name, s, new_dir}), ++c;
         }
     }
     //----------------------------------------------------------- Create, init and push new dir struct:

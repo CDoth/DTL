@@ -18,6 +18,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     DDirReader.cpp \
+    DLexeme.cpp \
     DLogs.cpp \
     DTcp.cpp \
     FileMover.cpp
@@ -28,6 +29,7 @@ HEADERS += \
     DDirReader.h \
     DHolder.h \
     DItem.h \
+    DLexeme.h \
     DList.h \
     DLogs.h \
     DMatrix.h \

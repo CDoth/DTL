@@ -14,7 +14,7 @@ int DTcp::receive_to(void* data, int len, int flag)
     {
         rb = recv(_socket_out, (char*)data + tb, len - tb, flag);
         if( rb > 0 ) tb += rb;
-        else return tb;
+        else return rb;
 
     }while(tb < len);
     return tb;

@@ -8,7 +8,8 @@
 #include "thread"
 #include "DProfiler.h"
 #include "DDirReader.h"
-
+#include "daran.h"
+#include "DLexeme.h"
 #ifdef _WIN32
 #include "QDebug"
 #define _debug qDebug()
@@ -36,187 +37,10 @@ enum header_type
     Message = 4004,
     NoType = 0,
 
-    PlanFile = 2022,
     ForceRequest = 2032,
     AttachRequest = 2042,
-    MultiPlanFile = 2052,
 };
 
-
-class read_master
-{
-public:
-    read_master()
-    {
-        default_context.start_pos = 0;
-        default_context.end_pos = 0;
-        default_context.min = 0;
-        default_context.max = 0;
-        default_context.max_size = 0;
-        default_context.unique = false;
-        default_context.special1 = ' ';
-        default_context.special2 = ' ';
-        default_context.min_filter = false;
-        default_context.max_filter = true;
-    }
-    typedef const char* raw;
-    typedef const char* raw_pos;
-    typedef uint64_t pos_t;
-    typedef uint32_t index_t;
-    typedef int64_t value_t;
-    typedef uint8_t flag_t;
-    struct read_context
-    {
-        pos_t start_pos;
-        pos_t end_pos;
-        value_t min;
-        value_t max;
-        index_t max_size;
-        bool unique;
-        bool min_filter;
-        bool max_filter;
-        char special1;
-        char special2;
-
-    };
-    read_context default_context;
-    enum lex_fmode {Same = 0b00000001, StartWith = 0b00000010, EndWith = 0b00000100, Include = 0b00001000};
-    struct lex_context
-    {
-        raw sample;
-        flag_t flag;
-    };
-
-    inline bool is_digit(char c) {return (c == '1' || c == '2' || c == '3' || c == '4' || c == '5' ||
-                                          c == '6' || c == '7' || c == '8' || c == '9' || c == '0');}
-    inline bool is_number(raw b, char stop = 0)
-    {
-        if(is_digit(*b) || *b == '-')
-        {
-            ++b;
-            while(*b != ' ' && (!stop || *b != stop) && *b != '\0') if(!(is_digit(*b++))) return false;
-        }
-        else return false;
-        return true;
-    }
-    inline bool is_num2(char c) {return c >= '0' && c <= '9';}
-    inline bool no_sym(char c, char s) {return c != s;}
-    inline bool in_range(int v, int min, int max) {return  v <= max && v >= min;}
-    inline bool is_end(char v) const {return v == '\0';}
-    inline bool no_end(char v) const {return v != '\0';}
-    DArray<int> numbers(raw v, read_context* context)
-    {
-        DArray<int> list;
-        read_context* c = context?context:&default_context;
-        v += c->start_pos;
-        raw e = v + c->end_pos;
-        bool check_it = true;
-        while(*v != '\0')
-        {
-            if(*v == ' ') check_it = true;
-            else if(check_it)
-            {
-                if(is_number(v))
-                {
-                    value_t number = atoi(v);
-                    if(
-                          (!c->min_filter || number >= c->min)
-                       && (!c->max_filter || number <= c->max)
-                       && (!c->unique     || !list.count(number))
-                       && (!c->max_size   || (index_t)list.size() < c->max_size )
-                       )
-                        list.push_back(number);
-
-                }
-                check_it = false;
-            }
-            if( ++v == e) break;
-        }
-        return list;
-    }
-    DArray<int> list(raw v, read_context* context)
-    {
-        DArray<int> list;
-        read_context* c = context?context:&default_context;
-        v += c->start_pos;
-        raw e = v + c->end_pos;
-        bool check_it = true;
-        while(*v != '\0')
-        {
-            if(*v == ',') check_it = true;
-            else if(*v != ' ' && check_it)
-            {
-//                _debug << "check" << v;
-                if(is_number(v, ','))
-                {
-                    value_t number = atoi(v);
-//                    _debug << "check number:" << number;
-                    if(
-                          (!c->min_filter || number >= c->min)
-                       && (!c->max_filter || number <= c->max)
-                       && (!c->unique     || !list.count(number))
-                       && (!c->max_size   || (index_t)list.size() < c->max_size )
-                       )
-                    {
-//                        _debug << "valid number:" << number;
-                        list.push_back(number);
-                    }
-
-                }
-                check_it = false;
-            }
-            if( ++v == e) break;
-        }
-        return list;
-    }
-    DArray<char> options(raw v, read_context* context)
-    {
-        DArray<char> list;
-        read_context* c = context?context:&default_context;
-        v += c->start_pos;
-        raw e = v + c->end_pos;
-        bool check_it = true;
-        while(*v != '\0')
-        {
-            if(*v == ' ') check_it = true;
-            else if(check_it)
-            {
-//                if(*v == c->special1)
-            }
-            if( ++v == e) break;
-        }
-    }
-    int number(raw v, read_context* context)
-    {
-        read_context* c = context?context:&default_context;
-        v += c->start_pos;
-        raw e = v + c->end_pos;
-        bool check_it = true;
-        while(*v != '\0')
-        {
-            if(*v == ' ') check_it = true;
-            else if(check_it)
-            {
-                if(is_number(v))
-                {
-                    value_t number = atoi(v);
-                    if(
-                          (!c->min_filter || number >= c->min)
-                       && (!c->max_filter || number <= c->max)
-                       )
-                        return number;
-                }
-                check_it = false;
-            }
-            if( ++v == e) break;
-        }
-        return 0;
-    }
-    char option(raw v, read_context* context);
-    raw_pos symbol(raw v, read_context* context);
-    raw_pos no_symbol(raw v, read_context* context);
-    raw_pos lex(raw v, read_context* context);
-};
 
 class FileMover
 {
@@ -224,16 +48,16 @@ public:
     FileMover()
     {
         connection_status = false;
+        show_progress = true;
         message_buffer.resize(FM_DEFAULT_MESSAGE_BUFFER_SIZE);
         send_buffer.resize(FM_DEFAULT_SEND_BUFFER_SIZE);
         recv_buffer.resize(FM_DEFAULT_RECV_BUFFER_SIZE);
         string_buffer.resize(FM_DEFAULT_STRING_BUFFER_SIZE);
-
     }
     typedef std::string string;
     typedef uint64_t file_size_t;
 
-    typedef uint32_t index_t;
+    typedef int index_t;
 
     typedef uint32_t string_size;
     typedef uint32_t WORD;
@@ -244,6 +68,7 @@ public:
     int current_dir_index;
     DTcp control;
     bool connection_status;
+    bool show_progress;
 
     const index_t system_index_shift = 10;
     //----------------------------------
@@ -271,99 +96,190 @@ public:
         string shortSize;
         file_size_t size;
     };
-    struct file_send_handler
-    {
-        bool interuptable;
-        file_send_handler* connect_next; // multi-sending files
-        file_send_handler* connect_prev; // multi-sending files
-        int pack_freq; // multi-sending files
-        //--------
-        bool initial_sent;
-        int pack_sent;
-
-
-
-        file_info* f;
-        index_t index;
-        double prc;
-        struct timeval start;
-        size_t bytes_left;
-        int flush_now;
-
-        char speed[10];
-        struct timeval last;
-        size_t shift;
-    };
-    file_send_handler* alloc_send_handler()
-    {
-        file_send_handler* h = new file_send_handler;
-        h->interuptable = true;
-        h->connect_next = nullptr;
-        h->connect_prev = nullptr;
-        h->pack_freq = 1;
-        h->initial_sent = false;
-        h->pack_sent = 0;
-
-        h->f = nullptr;
-        h->index = -1;
-        h->prc = 0.0;
-        h->bytes_left = 0;
-        h->flush_now = 0;
-        h->shift = 0;
-
-        return h;
-    }
-    struct file_recv_handler
-    {
-        int packet_size;
-        int read_for_packet;
-
-
-        file_info* f;
-        int index;
-        double prc;
-        struct timeval start;
-        size_t bytes_left;
-        int read_now;
-
-        int read;
-
-        size_t shift;
-        file_recv_handler* next;
-        file_recv_handler* prev;
-    };
-    file_recv_handler* alloc_recv_handler()
-    {
-        file_recv_handler* h = new file_recv_handler;
-        h->packet_size = 0;
-        h->read_for_packet = 0;
-        h->f = nullptr;
-        h->index = 0;
-        h->prc = 0.0;
-        h->bytes_left = 0;
-        h->read_now = 0;
-        h->shift = 0;
-        h->prev = nullptr;
-        h->next = nullptr;
-        return h;
-    }
     struct specific_data_send_handler
     {
         header_type type;
         void* data;
     };
 
+    struct _send_info
+    {
+        bool interuptable;
+        int pack_freq; // multi-sending files
+        bool initial_sent;
+        int pack_sent;
+    };
+    struct _recv_info
+    {
+        int packet_size;
+        int read_for_packet;
+    };
+
+    struct file_handler
+    {
+        file_info* f;
+        index_t index;
+        size_t shift;
+        file_handler* next;
+        file_handler* prev;
+
+        size_t bytes_left;
+        int flush_now;
+        double prc;
+        struct timeval start;
+
+        _send_info* si;
+        _recv_info* ri;
+    };
+
+    file_handler* get_file_handler()
+    {
+        file_handler* h = get_mem<file_handler>(1);
+        h->f = nullptr;
+        h->index = 0;
+        h->shift = 0;
+        h->next = nullptr;
+        h->prev = nullptr;
+        h->bytes_left = 0;
+        h->flush_now = 0;
+        h->prc = 0.0;
+        h->start = {0,0};
+        h->si = nullptr;
+        h->ri = nullptr;
+        return h;
+    }
+    _recv_info* get_recv_info()
+    {
+        _recv_info* ri = get_mem<_recv_info>(1);
+        ri->packet_size = 0;
+        ri->read_for_packet = 0;
+        return ri;
+    }
+    _send_info* get_send_info()
+    {
+        _send_info* si = get_mem<_send_info>(1);
+        si->pack_freq = 0;
+        si->pack_sent = 0;
+        si->initial_sent = false;
+        si->interuptable = false;
+        return si;
+    }
 
 
-    typedef DArray<file_recv_handler*> file_list;
-    file_list                                    recv_plan;
 
-    std::map<index_t, file_send_handler*>        send_map;
-    std::deque<file_send_handler*>               send_queue;
+    struct file_multi_queue
+    {
+        DArray<file_handler*> list;
+        void push(file_handler* h)
+        {
+            if(!h) {_debug << "file_multi_queue::push() : bad pointer to file handler"; return;}
+            pull(h);
+            list.push_back(h);
+        }
+        void pull(file_handler* h)
+        {
+            if(!h) {_debug << "file_multi_queue::pull() : bad pointer to file handler"; return;}
+            if(contain(h))
+            {
+                for(int i=0;i!=list.size();++i)
+                {
+                    if(h == list[i])
+                    {
+                        if(h->next) list[i] = h->next;
+                        else list.remove(h), --i;
+                    }
+                }
+                disconnect_handler(h);
+            }
+        }
+        void attach(file_handler* h, file_handler* to)
+        {
+            if(!h) {_debug << "file_multi_queue::attach() : bad pointer to file handler 1"; return;}
+            if(!to) {_debug << "file_multi_queue::attach() : bad pointer to file handler 2"; return;}
+            if(h == to) {_debug << "file_multi_queue::attach() : bad pointer to file handler 3"; return;}
+            if(contain(to))
+            {
+                pull(h);
+                if(to->next)
+                {
+                    auto onext = to->next;
+                    to->next = h;
+                    h->prev = to;
+                    h->next = onext;
+                    onext->prev = h;
+                }
+                else
+                {
+                    to->next = h;
+                    h->prev = to;
+                }
+             }
+            else
+                _debug << "ATTACH: LIST HAS NO HANDLER:"<<to->index;
+        }
+        void attach_back(file_handler* h)
+        {
+            if(!h) {_debug << "file_multi_queue::attach_back() : bad pointer to file handler 1"; return;}
+            if(!list.empty()) attach(h, list.back());
+        }
+        void attach_first(file_handler* h)
+        {
+            if(!h) {_debug << "file_multi_queue::attach_first() : bad pointer to file handler 1"; return;}
+            if(!list.empty()) attach(h, list.front());
+        }
+        void ring(file_handler* h, file_handler* to)
+        {
+            if(!h) {_debug << "file_multi_queue::ring() : bad pointer to file handler 1"; return;}
+            attach(h, to);
+            if(h->next == nullptr && to->prev == nullptr)
+            {
+                h->next = to;
+                to->prev = h;
+            }
+        }
+        void ring_back(file_handler* h)
+        {
+            if(!h) {_debug << "file_multi_queue::ring_back() : bad pointer to file handler 1"; return;}
+            if(!list.empty()) ring(h, list.back());
+        }
+        void ring_first(file_handler* h)
+        {
+            if(!h) {_debug << "file_multi_queue::ring_back() : bad pointer to file handler 1"; return;}
+            if(!list.empty()) ring(h, list.front());
+        }
+        file_handler* handler_by_index(index_t i, const std::map<index_t, file_handler*>& map)
+        {auto h = map.find(i); return h == map.end() ? nullptr : h->second;}
+        inline bool contain(file_handler* h)
+        {
+            for(int i=0;i!=list.size();++i)
+            {
+                auto _h = list[i];
+                do
+                {
+                    if(_h == h) return true;
+                    _h = _h->next;
+                }while(_h && _h != list[i]);
+            }
+            return false;
+        }
+    private:
+        void disconnect_handler(file_handler* h)
+        {
+            if(h->next) h->next->prev = h->prev;
+            if(h->prev) h->prev->next = h->next;
+            h->next = nullptr;
+            h->prev = nullptr;
+        }
+    };
 
-    std::map<index_t, file_recv_handler*>        recv_map;
+    file_multi_queue                                recv_plan;
+    file_multi_queue                                send_queue;
+
+    std::map<index_t, file_handler*>                send_map;
+    std::map<index_t, file_handler*>                recv_map;
+
+
     std::queue<index_t> available_index;
-
     std::queue<specific_data_send_handler*>      specific_queue;
 
     struct message_data
@@ -373,10 +289,14 @@ public:
     };
 
 
+    file_handler* recv_handler(index_t i)
+    {auto h = recv_map.find(i); return h == recv_map.end() ? nullptr : h->second;}
+    file_handler* send_handler(index_t i)
+    {auto h = send_map.find(i); return h == send_map.end() ? nullptr : h->second;}
 
     void add_dir(const char* path)
     {
-        dir.add_dir(path);
+        if(path) dir.add_dir(path);
     }
     void print_dir_list() const
     {
@@ -388,13 +308,12 @@ public:
         while (b != e) std::cout << n++ << ": " << (*b++)->full_path << std::endl;
         std::cout << "-----------------" << std::endl;
     }
-    void chose_dir(int i)
+    void choose_dir(int i)
     {
         current_dir_index = --i;
     }
     void print_dir(int i) const
     {
-        --i;
         auto d = dir.begin() + i;
         auto b = (*d)->begin();
         auto e = (*d)->end();
@@ -412,15 +331,16 @@ public:
     }
     void load_file_from_current_dir(int i)
     {
-        --i;
         auto d = dir.begin() + current_dir_index;
         auto file = (*d)->begin() + i;
 
         _debug << (*file).path().c_str();
 
-        auto handler = prepare_to_send((*file).path().c_str());
+        auto handler = load((*file).path().c_str());
         if(handler) push_new_file_handler(handler);
     }
+
+
     void return_index(index_t index)
     {
         if(index - system_index_shift < send_map.size() - 1 )
@@ -429,103 +349,28 @@ public:
         }
     }
 
-    void insert_recv_handler(file_recv_handler* it, file_recv_handler* to)
-    {
-        if(to->next)
-        {
-            auto onext = to->next;
-            to->next = it;
-            it->prev = to;
-            it->next = onext;
-            onext->prev = it;
-        }
-        else
-        {
-            to->next = it;
-            it->prev = to;
-        }
-    }
-    void pull_recv_handler(file_recv_handler* h)
-    {
-//        _debug << "CALL: pull_recv_handler"<<h->index;
-        if(h->next) h->next->prev = h->prev;
-        if(h->prev) h->prev->next = h->next;
-        h->next = nullptr;
-        h->prev = nullptr;
-    }
-    void insert_send_handler(file_send_handler* it, file_send_handler* to)
-    {
-        if(to->connect_next)
-        {
-            auto onext = to->connect_next;
-            to->connect_next = it;
-            it->connect_prev = to;
-            it->connect_next = onext;
-            onext->connect_prev = it;
-        }
-        else
-        {
-            to->connect_next = it;
-            to->connect_prev = it;
-            it->connect_next = to;
-            it->connect_prev = to;
-        }
-    }
+
+
     //---------------------------------------------------- restore
-    void plan_to(file_recv_handler* to, file_recv_handler* h, const char* path = nullptr)
+    void plan_to(file_handler* to, file_handler* h, const char* path)
     {
+        if(!h) { _debug << "plan_to: bad recv handler"; return; }
         set_recv_path(h, path);
-        update_plan(h);
-        insert_recv_handler(h, to);
+        recv_plan.attach(h, to);
     }
-    void plan_file(file_recv_handler* h, const char* path = nullptr)
+    void plan_file(file_handler* h, const char* path)
     {
-        auto _h = h;
-        while(_h)
-        {
-            update_plan(_h);
-            _h = _h->next;
-        }
+        if(!h) { _debug << "plan_file: bad recv handler"; return; }
         set_recv_path(h, path);
-        recv_plan.push_back(h);
-    }
-    void update_plan(file_recv_handler* h)
-    {
-//        _debug << "CALL: update_plan"<<h->index;
-        for(int i=0;i!=recv_plan.size(); ++i)
-        {
-            file_recv_handler* plan_h = recv_plan[i];
-            while(plan_h)
-            {
-//                _debug << "compare:" << "in plan:" << plan_h->index << "h:" << h->index;
-                if(plan_h == h)
-                {
-//                    _debug << "remove:" << h->index;
-                    if(plan_h == recv_plan[i])
-                    {
-                        if(plan_h->next)
-                        {
-                            recv_plan[i] = plan_h->next;
-                            pull_recv_handler(plan_h);
-                        }
-                        else
-                        {
-                            recv_plan.remove(plan_h);--i;
-                        }
-                    }
-                    else pull_recv_handler(plan_h);
-                }
-                plan_h = plan_h->next;
-            }
-        }
+        recv_plan.push(h);
     }
     void print_plan() const
     {
-        if(recv_plan.size())
+        if(recv_plan.list.size())
         {
-            auto b = recv_plan.constBegin();
-            auto e = recv_plan.constEnd();
-            file_recv_handler* h = nullptr;
+            auto b = recv_plan.list.constBegin();
+            auto e = recv_plan.list.constEnd();
+            file_handler* h = nullptr;
             while( b != e )
             {
                 h = *b;
@@ -545,29 +390,42 @@ public:
         }
         else std::cout << "plan is empty" << std::endl;
     }
-    void push_force_request(index_t file_index, const char* path = nullptr)
+    void push_force_request(file_handler* h, const char* path)
     {
-        set_recv_path(recv_map[file_index], path);
+        if(!h) { _debug << "push_force_request: bad recv handler"; return; }
+        recv_plan.pull(h);
+        set_recv_path(h, path);
         specific_data_send_handler* sh;
         set_mem(sh,1);
         sh->type = ForceRequest;
-        int* index = get_mem<int>(1);
-        *index = file_index;
-        sh->data = index;
+        sh->data = h;
         specific_queue.push(sh);
     }
-    void push_file_request(file_recv_handler* h, const char* path = nullptr)
+    void push_file_request(file_handler* h, const char* path)
     {
+        if(!h) { _debug << "push_file_request: bad recv handler"; return; }
+        recv_plan.pull(h);
         set_recv_path(h, path);
         specific_data_send_handler* sh;
         set_mem(sh,1);
         sh->type = FileRequest;
         sh->data = h;
-
         specific_queue.push(sh);
+
+        if(h->f->size == h->shift)
+        {
+            recv_map.erase(recv_map.find(h->index));
+            delete h->f;
+            delete h;
+        }
     }
-    void push_attach_request(file_recv_handler* h, const char* path = nullptr)
+    void push_attach_request(file_handler* h, const char* path)
     {
+        if(!h)
+        {
+            _debug << "push_attach_request: bad pointer to file_recv_handler";
+            return;
+        }
         set_recv_path(h, path);
         specific_data_send_handler* sh;
         set_mem(sh,1);
@@ -575,17 +433,19 @@ public:
         sh->data = h;
         specific_queue.push(sh);
     }
-    void push_multi_files_request(file_recv_handler* h, const char* path = nullptr)
+    void push_multi_files_request(file_handler* h, const char* path)
     {
+        if(!h) { _debug << "push_multi_files_request: bad recv handler"; return; }
         if(!h->next)
         {
-            push_file_request(h);
+            push_file_request(h, path);
             return;
         }
         auto _h = h;
         while(_h)
         {
             set_recv_path(_h, path);
+            recv_plan.pull(_h);
             _h = _h->next;
         }
         specific_data_send_handler* sh;
@@ -596,87 +456,86 @@ public:
     }
     void start_plan()
     {
-        auto b = recv_plan.begin();
-        auto e = recv_plan.end();
-        while( b != e ) push_multi_files_request(*b++, nullptr);
-        recv_plan.clear();
-    }
-    void attach_files(const DArray<index_t>& files) //ms with current
-    {
-        if(send_queue.size())
+        while(!recv_plan.list.empty())
         {
-            file_send_handler* h = nullptr;
-            file_send_handler* connect_to = send_queue.front();
-            auto b = files.constBegin();
-            auto e = files.constEnd();
-            while( b != e )
+            push_multi_files_request(recv_plan.list.front(), nullptr);
+        }
+        recv_plan.list.clear();
+    }
+
+    void free_file_handler(file_handler* h)
+    {
+        if(!h) if(!h) { _debug << "clear_local_file: bad recv handler"; return; }
+        auto map_check = send_map.find(h->index);
+        if(map_check != send_map.end()) send_map.erase(map_check);
+        if((map_check = recv_map.find(h->index)) != recv_map.end()) recv_map.erase(map_check);
+        delete h->f;
+        free_mem(h->si);
+        free_mem(h->ri);
+        delete h;
+    }
+    void clear_completed()
+    {
+        for (auto it = recv_map.cbegin(); it != recv_map.cend();)
+        {
+            if(it->second->shift == it->second->f->size)
             {
-                h = send_map[*b];
-                if(connect_to->connect_next)
-                {
-                    auto old_next = connect_to->connect_next;
-                    h->connect_next = old_next;
-                    h->connect_prev = connect_to;
-                    old_next->connect_prev = h;
-                    connect_to->connect_next = h;
-                }
-                else
-                {
-                    h->connect_next = connect_to;
-                    h->connect_prev = connect_to;
-                    connect_to->connect_prev = h;
-                    connect_to->connect_next = h;
-                }
-                connect_to = h;
-                ++b;
+                free_file_handler(it->second);
+                recv_map.erase(it++);
+//                it = recv_map.erase(it);
             }
+            else ++it;
         }
-        else
-        {
-            push_ms_files(files);
-        }
-    }
-    void push_file(file_send_handler* h)
-    {
-        send_queue.push_back(h);
-    }
-    void insert_file(index_t file_index)
-    {
-        send_queue.insert(send_queue.begin(), send_map[file_index]);
+
+//        for (auto it = recv_map.cbegin(), next_it = it; it != recv_map.cend(); it = next_it)
+//        {
+//          ++next_it;
+//          if (it->second->shift == it->second->f->size) recv_map.erase(it);
+//        }
     }
     void push_files(const DArray<index_t>& files)
     {
-        file_send_handler* h = nullptr;
+        file_handler* h = nullptr;
         for(int i=0;i!= files.size();++i)
         {
             h = send_map[files[i]];
-            send_queue.push_back(h);
+            send_queue.push(h);
         }
     }
     void push_ms_files(const DArray<index_t>& files)
     {
-        file_send_handler* first = send_map[files.constFront()];
+        file_handler* first = send_map[files.constFront()];
         if(files.size() > 1)
         {
-            file_send_handler* last  = first;
+            file_handler* last  = first;
             auto b = files.constBegin() + 1;
             auto e = files.constEnd();
             while( b != e )
             {
                 auto curr = send_map[*b];
-                last->connect_next = curr;
-                curr->connect_prev = last;
+                last->next = curr;
+                curr->prev = last;
                 last = curr;
                 ++b;
             }
-            last->connect_next = first;
-            first->connect_prev = last;
+            last->next = first;
+            first->prev = last;
         }
-        send_queue.push_back(first);
+        send_queue.push(first);
     }
-
-    void set_recv_path(file_recv_handler* h, const char* path)
+    void push_all(const char* path)
     {
+        auto b = recv_map.begin();
+        auto e = recv_map.end();
+        while( b != e ) push_file_request(b->second, path), ++b;
+    }
+    void set_recv_path(file_handler* h, const char* path)
+    {
+        if(h->f->name.empty())
+        {
+            _debug << "set_recv_path: empty name:"<<h->index;
+            return;
+        }
         while(h)
         {
             if(path)
@@ -684,7 +543,7 @@ public:
                 h->f->path = path;
                 h->f->path.append(h->f->name);
             }
-            else if(h->f->path.empty())
+            else if(h->f->path.empty() && !default_path.empty())
             {
                 h->f->path = default_path;
                 h->f->path.append(h->f->name);
@@ -734,16 +593,16 @@ public:
     }
     void print_send_queue() const
     {
-        if(!send_queue.size())
+        if(!send_queue.list.size())
         {
             std::cout << "send queue is empty" << std::endl;
             return;
         }
-        auto b = send_queue.begin();
-        auto e = send_queue.end();
+        auto b = send_queue.list.constBegin();
+        auto e = send_queue.list.constEnd();
         while( b != e ) print_file_info((*b++)->f);
     }
-    void push_new_file_handler(file_send_handler* f)
+    void push_new_file_handler(file_handler* f)
     {
         if(send_map.size())
         {
@@ -752,7 +611,9 @@ public:
             sh->type = NewFileInSystem;
             sh->data = f;
             specific_queue.push(sh);
+//            _debug << "push_new_file_handler: pushed:"<<f->index<<f->f->name.c_str();
         }
+        else _debug << "push_new_file_handler: no files";
     }
     void push_message(int begin, int size)
     {
@@ -771,13 +632,13 @@ public:
         index_t ds_byte = FM_DISCONNECT_BYTE;
 
 
-        file_recv_handler* current_recv_file = nullptr;
-        file_send_handler* current_send_file = nullptr;
+        file_handler* current_recv_file = nullptr;
+        file_handler* current_send_file = nullptr;
         specific_data_send_handler* current_spec = nullptr;
-        file_recv_handler* new_file = nullptr;
-        file_recv_handler* start_recv_file = nullptr;
+        file_handler* new_file = nullptr;
+        file_handler* start_recv_file = nullptr;
 
-        file_send_handler* ms_handler = nullptr;
+        file_handler* ms_handler = nullptr;
 
         //----recv
         index_t data_index = 0;
@@ -833,11 +694,13 @@ public:
                         {
                             if(!new_file)
                             {
-                                new_file = fm->alloc_recv_handler();
+                                new_file = fm->get_file_handler();
+                                new_file->ri = fm->get_recv_info();
                                 new_file->f = new file_info;
                                 rc.add_item({&new_file->index, sizeof(index_t)});
                                 rc.add_item({&new_file->f->size, sizeof(file_size_t)});
-                                rc.add_item({&new_file->packet_size, sizeof(int)});
+                                rc.add_item({&new_file->ri->packet_size, sizeof(int)});
+                                zero_mem(fm->string_buffer.data, fm->string_buffer.size);
                                 rc.add_item({fm->string_buffer.data, 0, true});
                                 rc.complete();
                             }
@@ -869,18 +732,17 @@ public:
                             rb = fm->control.unlocked_recv_to(&index, sizeof(index_t));
                             if(rb == sizeof(index_t))
                             {
-                                file_recv_handler* h = fm->recv_map[index];
+                                file_handler* h = fm->recv_map[index];
                                 gettimeofday(&h->start, nullptr);
                                 if(h->shift)
                                     h->f->file = fopen(h->f->path.c_str(), "ab");
                                 else
                                     h->f->file = fopen(h->f->path.c_str(), "wb");
-                                h->read = 0;
                                 h->prc  = 0.0;
                                 h->bytes_left = h->f->size;
                                 h->bytes_left -= h->shift;
-                                h->read_for_packet = 0;
-                                h->read_now = (size_t)h->packet_size < fm->recv_buffer.size ? h->packet_size : fm->recv_buffer.size;
+                                h->ri->read_for_packet = 0;
+                                h->flush_now = (size_t)h->ri->packet_size < fm->recv_buffer.size ? h->ri->packet_size : fm->recv_buffer.size;
                                 rtype = NoType;
                                 data_index = 0;
                                 index = 0;
@@ -899,7 +761,8 @@ public:
                             {
                                 auto h = fm->send_map[recv_index];
                                 h->shift = recv_shift;
-                                fm->push_file(h);
+                                if(h->shift == h->f->size) fm->free_file_handler(h);
+                                else fm->send_queue.push(h);
                                 rtype = NoType;
                                 data_index = 0;
                             }
@@ -919,50 +782,71 @@ public:
                             {
                                 auto h = fm->send_map[recv_index];
                                 h->shift = recv_shift;
-                                if(ms_handler) fm->insert_send_handler(h, ms_handler);
-                                else ms_handler = h;
+                                h->si->pack_freq = 1;
 
+
+                                if(h->shift == h->f->size) fm->free_file_handler(h);
+                                else if(ms_handler) fm->send_queue.ring_back(h);
+                                else
+                                {
+                                    ms_handler = h;
+                                    fm->send_queue.push(h);
+                                }
                                 if(rc.is_over())
                                 {
-                                    fm->push_file(ms_handler);
                                     ms_handler = nullptr;
                                     rtype = NoType;
                                     data_index = 0;
                                     rc.clear();
                                 }
                             }
-
                             break;
                         }
                         case AttachRequest:
                         {
-                            rb = fm->control.unlocked_recv_packet(fm->string_buffer.data, &packet_size);
-                            if(packet_size && rb == packet_size)
+                            if(rc.empty())
                             {
-                                int size = packet_size/sizeof(int);
-                                files.reserve(size);
-                                int* a = (int*)fm->string_buffer.data;
-                                for(int i=0;i!=size;++i)
+                                rc.add_item({&recv_size, sizeof(int)});
+                                rc.add_item({&recv_index, sizeof(index_t)});
+                                rc.add_item({&recv_shift, sizeof(size_t)});
+                                rc.add_script(2,1,&recv_size,true);
+                                rc.complete();
+                            }
+                            if(rc.unlocked_recv_script())
+                            {
+                                auto h = fm->send_map[recv_index];
+                                h->shift = recv_shift;
+                                h->si->pack_freq = 1;
+//                                _debug << "get file for attach:"<<h<<h->index;
+                                fm->send_queue.list.front()->si->pack_freq = 1;
+                                if(h->shift == h->f->size) fm->free_file_handler(h);
+                                else fm->send_queue.ring_first(h);
+                                if(rc.is_over())
                                 {
-                                    files.push_back(a[i]);
+                                    ms_handler = nullptr;
+                                    rtype = NoType;
+                                    data_index = 0;
+                                    rc.clear();
                                 }
-                                fm->attach_files(files);
-                                files.clear();
-                                rtype = NoType;
-                                data_index = 0;
                             }
                             break;
                         }
                         case ForceRequest:
                         {
-                            rb = fm->control.unlocked_recv_to(&index, sizeof(index_t));
-                            if(rb == sizeof(index_t))
+                            if(rc.empty())
                             {
+                                rc.add_item({&recv_index, sizeof(index_t)});
+                                rc.add_item({&recv_shift, sizeof(size_t)});
+                                rc.complete();
+                            }
+                            if(rc.unlocked_recv_all())
+                            {
+                                auto h = fm->send_map[recv_index];
+                                h->shift = recv_shift;
+                                if(h->shift == h->f->size) fm->free_file_handler(h);
+                                else fm->send_queue.list.push_front(h);
                                 rtype = NoType;
                                 data_index = 0;
-                                fm->insert_file(index);
-                                current_send_file = nullptr;
-                                index = 0;
                             }
                             break;
                         }
@@ -972,22 +856,23 @@ public:
                     else
                     {
                         current_recv_file = fm->recv_map[data_index];
-                        rb = fm->control.unlocked_recv_to(fm->recv_buffer.data, current_recv_file->read_now);
-                        if(rb == current_recv_file->read_now)
+                        rb = fm->control.unlocked_recv_to(fm->recv_buffer.data, current_recv_file->flush_now);
+                        if(rb == current_recv_file->flush_now)
                         {
                             fwrite(fm->recv_buffer.data, rb, 1, current_recv_file->f->file);
                             if( current_recv_file->bytes_left -= rb )
                             {
-                                current_recv_file->read_for_packet += rb;
+                                current_recv_file->ri->read_for_packet += rb;
                                 current_recv_file->prc = 100.0 - ((double) current_recv_file->bytes_left * 100.0 / current_recv_file->f->size);
 
-                                std::cout << "recv progress: "<<current_recv_file->index << " " << current_recv_file->prc << " %" << std::endl;
+//                                if(fm->show_progress)
+//                                std::cout << "recv progress: "<<current_recv_file->index << " " << current_recv_file->prc << " %" << std::endl;
 
-                                current_recv_file->read_now = current_recv_file->bytes_left < (size_t)fm->recv_buffer.size ?
+                                current_recv_file->flush_now = current_recv_file->bytes_left < (size_t)fm->recv_buffer.size ?
                                                               current_recv_file->bytes_left : fm->recv_buffer.size;
-                                if(current_recv_file->read_for_packet == current_recv_file->packet_size)
+                                if(current_recv_file->ri->read_for_packet == current_recv_file->ri->packet_size)
                                 {
-                                    current_recv_file->read_for_packet = 0;
+                                    current_recv_file->ri->read_for_packet = 0;
                                     data_index = 0;
                                     rtype = NoType;
                                 }
@@ -997,10 +882,10 @@ public:
 
                                 timeval end;
                                 gettimeofday(&end, nullptr);
-                                timeval t = PROFILER::time_dif(&current_recv_file->start, &end);
+//                                timeval t = PROFILER::time_dif(&current_recv_file->start, &end);
 
-                                std::cout << "recv file: " << current_recv_file->index << " " << current_recv_file->f->path <<
-                                             "time: " << t.tv_sec << " sec " << t.tv_usec << " usec" << std::endl;
+//                                std::cout << "recv file: " << current_recv_file->index << " " << current_recv_file->f->path <<
+//                                             "time: " << t.tv_sec << " sec " << t.tv_usec << " usec" << std::endl;
 
                                 fclose(current_recv_file->f->file);
                                 fm->recv_map.erase(fm->recv_map.find(current_recv_file->index));
@@ -1026,7 +911,7 @@ public:
                 {
                     while( (sb = fm->control.send_it(&ds_byte, 1)) <= 0 );
                 }
-                if(  ((current_send_file && current_send_file->interuptable) || !current_send_file)  &&  fm->specific_queue.size())
+                if(  ((current_send_file && current_send_file->si->interuptable) || !current_send_file)  &&  fm->specific_queue.size())
                 {
                     current_spec = fm->specific_queue.front();
                     switch (current_spec->type)
@@ -1035,7 +920,7 @@ public:
                     {
                         if(sc.empty())
                         {
-                            file_send_handler* h = (file_send_handler*)current_spec->data;
+                            file_handler* h = (file_handler*)current_spec->data;
                             sc.add_item({&nd_byte, sizeof(index_t), false});
                             sc.add_item({&current_spec->type, sizeof(header_type), false});
                             sc.add_item({&h->index, sizeof(index_t), false});
@@ -1049,6 +934,7 @@ public:
                             fm->specific_queue.pop();
                             free_mem(current_spec);
                             current_spec = nullptr;
+
                         }
                         break;
                     }
@@ -1056,7 +942,7 @@ public:
                     {
                         if(sc.empty())
                         {
-                            file_recv_handler* h = (file_recv_handler*)current_spec->data;
+                            file_handler* h = (file_handler*)current_spec->data;
                             sc.add_item({&nd_byte, sizeof(index_t)});
                             sc.add_item({&current_spec->type, sizeof(header_type)});
                             sc.add_item({&h->index, sizeof(index_t)});
@@ -1094,7 +980,7 @@ public:
                     {
                         if(sc.empty())
                         {
-                            file_recv_handler* h = (file_recv_handler*)current_spec->data;
+                            file_handler* h = (file_handler*)current_spec->data;
                             sc.add_item({&nd_byte, sizeof(index_t), false});
                             sc.add_item({&current_spec->type, sizeof(header_type), false});
 
@@ -1115,6 +1001,7 @@ public:
                             fm->specific_queue.pop();
                             free_mem(current_spec);
                             current_spec = nullptr;
+                            fm->clear_completed();
                         }
                         break;
                     }
@@ -1122,16 +1009,16 @@ public:
                     {
                         if(sc.empty())
                         {
-                            int* index = (int*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t), false});
-                            sc.add_item({&current_spec->type, sizeof(header_type), false});
-                            sc.add_item({index, sizeof(index_t), false});
+                            file_handler* h = (file_handler*)current_spec->data;
+                            sc.add_item({&nd_byte, sizeof(index_t)});
+                            sc.add_item({&current_spec->type, sizeof(header_type)});
+                            sc.add_item({&h->index, sizeof(index_t)});
+                            sc.add_item({&h->shift, sizeof(size_t)});
                             sc.complete();
                         }
                         if(sc.unlocked_send_all())
                         {
                             fm->specific_queue.pop();
-                            free_mem(current_spec->data);
                             free_mem(current_spec);
                             current_spec = nullptr;
                         }
@@ -1141,22 +1028,28 @@ public:
                     {
                         if(sc.empty())
                         {
-                            DArray<int>* files = (DArray<int>*)current_spec->data;
-                            int size = files->size();
-                            if(size>7) sc.reserve(size + 3);
+                            file_handler* h = (file_handler*)current_spec->data;
                             sc.add_item({&nd_byte, sizeof(index_t), false});
                             sc.add_item({&current_spec->type, sizeof(header_type), false});
-                            size *= sizeof(int);
-                            sc.add_item({files->constBegin(), size, true});
+
+                            send_size = -1;
+                            sc.add_item({&send_size, sizeof(int)});
+                            while(h)
+                            {
+                                ++send_size;
+                                sc.add_item({&h->index, sizeof(index_t)});
+                                sc.add_item({&h->shift, sizeof(size_t)});
+                                h = h->next;
+                            }
                             sc.complete();
                         }
                         if(sc.unlocked_send_all())
                         {
                             sc.reserve(10);
                             fm->specific_queue.pop();
-                            delete (DArray<int>*)current_spec->data;
                             free_mem(current_spec);
                             current_spec = nullptr;
+                            fm->clear_completed();
                         }
                         break;
                     }
@@ -1165,18 +1058,19 @@ public:
                     }
 
                 }
-                if(!fm->send_queue.empty() && !current_spec)
+                if(!fm->send_queue.list.empty() && !current_spec)
                 {
-                    if(!current_send_file) current_send_file = fm->send_queue.front();
-                    if(sc.empty() && !current_send_file->initial_sent)
+                    if(!current_send_file ||   (current_send_file->si->interuptable && current_send_file != fm->send_queue.list.front() )  )
+                        current_send_file = fm->send_queue.list.front();
+                    if(sc.empty() && !current_send_file->si->initial_sent)
                     {
-                        current_send_file->interuptable = false;
-                        current_send_file->initial_sent = false;
+                        current_send_file->si->interuptable = false;
+                        current_send_file->si->initial_sent = false;
                         sc.add_item({&nd_byte, sizeof(index_t), false});
                         sc.add_item({&ft, sizeof(header_type), false});
                         sc.add_item({&current_send_file->index, sizeof(index_t), false});
                         current_send_file->prc = 0.0;
-                        current_send_file->pack_sent = 0;
+                        current_send_file->si->pack_sent = 0;
                         fseek(current_send_file->f->file, current_send_file->shift, SEEK_SET);
                         current_send_file->bytes_left -= current_send_file->shift;
                         current_send_file->flush_now = current_send_file->bytes_left < (size_t)fm->send_buffer.size ?
@@ -1185,68 +1079,70 @@ public:
                     }
                     if(sc.unlocked_send_all())
                     {
-                        current_send_file->interuptable = true;
-                        current_send_file->initial_sent = true;
-                        gettimeofday(&current_send_file->last, nullptr);
+                        current_send_file->si->interuptable = true;
+                        current_send_file->si->initial_sent = true;
+//                        gettimeofday(&current_send_file->last, nullptr);
                         gettimeofday(&current_send_file->start, nullptr);
                     }
-                    if( current_send_file->initial_sent)
+                    if( current_send_file->si->initial_sent )
                     {
-                        if(!file_byte_sent) file_byte_sent = fm->control.send_it(&current_send_file->index, sizeof(index_t)); //sizeof(index_t)
-                        if(file_byte_sent == sizeof(index_t)) //sizeof(index_t)
+                        if(!file_byte_sent) file_byte_sent = fm->control.send_it(&current_send_file->index, sizeof(index_t));
+                        if(file_byte_sent == sizeof(index_t))
                         {
-                            if(current_send_file->interuptable)
+                            if(current_send_file->si->interuptable)
                                 fread(fm->send_buffer.data, current_send_file->flush_now, 1, current_send_file->f->file);
-                            current_send_file->interuptable = false;
+                            current_send_file->si->interuptable = false;
                             sb = fm->control.unlocked_send_it(fm->send_buffer.data, current_send_file->flush_now);
 
                             if(sb == current_send_file->flush_now)
                             {
                                 file_byte_sent = 0;
-                                if( current_send_file->bytes_left -= sb)
+                                if( current_send_file->bytes_left -= sb )
                                 {
                                     current_send_file->flush_now = current_send_file->bytes_left < (size_t)fm->send_buffer.size ?
                                                                    current_send_file->bytes_left : fm->send_buffer.size;
 
-                                    current_send_file->interuptable = true;
+                                    current_send_file->si->interuptable = true;
                                     current_send_file->prc = 100.0 - ((double) current_send_file->bytes_left * 100.0 / current_send_file->f->size);
 
+//                                    _debug << " -- next:"<<current_send_file->next << " -- prev:"<<current_send_file->prev<<" -- current:"<<current_send_file;
+                                    if(fm->show_progress)
                                     std::cout << "send progress: " << current_send_file->index << " " << current_send_file->prc << " %" <<std::endl;
 
-                                    if(current_send_file->connect_next && ++current_send_file->pack_sent == current_send_file->pack_freq)
+                                    if(current_send_file->next && ++current_send_file->si->pack_sent == current_send_file->si->pack_freq)
                                     {
-                                        current_send_file->pack_sent = 0;
-                                        current_send_file = current_send_file->connect_next;
+                                        current_send_file->si->pack_sent = 0;
+                                        current_send_file = current_send_file->next;
                                     }
                                 }
                                 else
                                 {
                                     timeval end;
                                     gettimeofday(&end, nullptr);
-                                    timeval t = PROFILER::time_dif(&current_send_file->start, &end);
+//                                    timeval t = PROFILER::time_dif(&current_send_file->start, &end);
 
-                                    std::cout << "sent file: " << current_send_file->index << " time: " << t.tv_sec << " sec " << t.tv_usec
-                                              << "usec" << std::endl;
+//                                    std::cout << "sent file: " << current_send_file->index << " time: " << t.tv_sec << " sec " << t.tv_usec
+//                                              << "usec" << std::endl;
 
                                     fclose(current_send_file->f->file);
                                     delete current_send_file->f;
-                                    if(current_send_file->connect_next)
+                                    if(current_send_file->next)
                                     {
-                                        if(current_send_file->connect_next == current_send_file->connect_prev)
+                                        if(current_send_file->next == current_send_file->prev)
                                         {
-                                            current_send_file->connect_next->connect_next = nullptr;
-                                            current_send_file->connect_next->connect_prev = nullptr;
+                                            current_send_file->next->next = nullptr;
+                                            current_send_file->next->prev = nullptr;
                                         }
                                         else
                                         {
-                                            current_send_file->connect_next->connect_prev = current_send_file->connect_prev;
-                                            current_send_file->connect_prev->connect_next = current_send_file->connect_next;
+                                            current_send_file->next->prev = current_send_file->prev;
+                                            current_send_file->prev->next = current_send_file->next;
                                         }
-                                        fm->send_queue.front() = current_send_file->connect_next;
+                                        fm->send_queue.list.front() = current_send_file->next;
                                     }
                                     else
                                     {
-                                        fm->send_queue.pop_front();
+                                        fm->send_queue.list.pop_front();
                                     }
                                     fm->return_index(current_send_file->index);
                                     fm->send_map.erase(fm->send_map.find(current_send_file->index));
@@ -1280,7 +1176,7 @@ public:
 
                             }
                         }
-                        else current_send_file->interuptable = true;
+                        else current_send_file->si->interuptable = true;
                     }
                 }
             }
@@ -1292,6 +1188,18 @@ public:
         std::cout << "Main stream is over" <<std::endl;
     }
 public:
+    file_handler* merge_handlers(const DArray<int>& list)
+    {
+        file_handler* head = nullptr;
+        for(int i=0;i!=list.size();++i)
+        {
+            auto h = recv_handler(list[i]);
+            recv_plan.pull(h);
+            if(head) h->next = head;
+            head = h;
+        }
+        return head;
+    }
 
     struct intr_info
     {
@@ -1385,26 +1293,6 @@ public:
         std::thread t(stream, this);
         t.detach();
     }
-    file_recv_handler* find_handlers(const DArray<index_t>& num)
-    {
-        auto f = recv_map.begin();
-        file_recv_handler* head = nullptr;
-        for(int i=0;i!=num.size();++i)
-        {
-            if( ( f = recv_map.find(num[i]) ) != recv_map.end() )
-            {
-                auto h = f->second;
-                update_plan(h);
-                if(head)
-                {
-                    head->prev = h;
-                    h->next = head;
-                }
-                head = h;
-            }
-        }
-        return head;
-    }
     void try_command(const char* command)
     {
         DArray<char> options;
@@ -1440,8 +1328,8 @@ public:
                 read(&ii, value);
                 for(int i=0;i!=ii.num.size();++i)
                 {
-                    auto f = recv_map.find(ii.num[i]);
-                    if( f != recv_map.end() ) plan_file(f->second);
+//                    auto f = recv_map.find(ii.num[i]);
+//                    if( f != recv_map.end() ) plan_file(f->second);
                 }
             }
             else std::cout << "no value" << std::endl;
@@ -1456,8 +1344,8 @@ public:
                 ii.unique_num = true;
                 auto list = ii.num;
                 read(&ii, value);
-                file_recv_handler* head = find_handlers(ii.num);
-                if(head) plan_file(head, ii.path);
+//                file_handler* head = merge_handlers(ii.num);
+//                if(head) plan_file(head, ii.path);
             }
             else std::cout << "no value" << std::endl;
         }
@@ -1473,8 +1361,8 @@ public:
                 index_t to = ii.num.front();
                 ii.num.pop_front();
 
-                file_recv_handler* head = find_handlers(ii.num);
-                if(head) plan_to(recv_map[to], head, ii.path);
+//                file_handler* head = merge_handlers(ii.num);
+//                if(head) plan_to(recv_map[to], head, ii.path);
             }
             else std::cout << "no value" << std::endl;
         }
@@ -1490,8 +1378,8 @@ public:
                 read(&ii, value);
                 for(int i=0;i!=ii.num.size();++i)
                 {
-                    auto f = recv_map.find(ii.num[i]);
-                    if( f != recv_map.end() ) update_plan(f->second);
+//                    auto f = recv_map.find(ii.num[i]);
+//                    if( f != recv_map.end() ) update_plan(f->second);
                 }
             }
             else std::cout << "no value" << std::endl;
@@ -1512,7 +1400,7 @@ public:
                 int index = atoi(value);
                 if(recv_map.find(index) != recv_map.end())
                 {
-                    push_force_request(index);
+//                    push_force_request(index,nullptr);
                 }
                 else std::cout << "Wrong index: " << index << std::endl;
             }
@@ -1528,8 +1416,8 @@ public:
                 ii.unique_num = true;
                 auto list = ii.num;
                 read(&ii, value);
-                file_recv_handler* head = find_handlers(ii.num);
-                if(head) push_attach_request(head, ii.path);
+//                file_handler* head = merge_handlers(ii.num);
+//                if(head) push_attach_request(head, ii.path);
             }
             else std::cout << "no value" << std::endl;
         }
@@ -1543,8 +1431,8 @@ public:
                 ii.unique_num = true;
                 auto list = ii.num;
                 read(&ii, value);
-                file_recv_handler* head = find_handlers(ii.num);
-                if(head) push_multi_files_request(head, ii.path);
+//                file_handler* head = merge_handlers(ii.num);
+//                if(head) push_multi_files_request(head, ii.path);
             }
             else std::cout << "no value" << std::endl;
         }
@@ -1580,7 +1468,7 @@ public:
                 for(int i=0;i!=ii.num.size();++i)
                 {
                     auto f = recv_map.find(ii.num.at(i));
-                    if( f != recv_map.end() ) push_file_request(f->second);
+                    if( f != recv_map.end() ) push_file_request(f->second, ii.path);
                 }
             }
             else std::cout << "no value" << std::endl;
@@ -1610,7 +1498,7 @@ public:
                 intr_info ii;
                 read(&ii, value);
                 int nd = ii.num.front();
-                chose_dir(nd);
+                choose_dir(nd);
             }
         }
         if(strcmp(cmd, "dir show") == 0)
@@ -1642,12 +1530,12 @@ public:
         }
         if(strcmp(cmd, "test") == 0)
         {
-            prepare_to_send("G://DH//e1.mkv");
-            prepare_to_send("G://DH//sv_test.mkv");
-            prepare_to_send("G://DH//e2.mkv");
-            prepare_to_send("G://DH//t1_.txt");
-            prepare_to_send("G://DH//pic_car.jpg");
-            prepare_to_send("G://DH//ost.zip");
+            load("G://DH//e1.mkv");
+            load("G://DH//sv_test.mkv");
+            load("G://DH//e2.mkv");
+            load("G://DH//t1_.txt");
+            load("G://DH//pic_car.jpg");
+            load("G://DH//ost.zip");
 
         }
         if(strcmp(cmd, "disconnect") == 0)
@@ -1701,7 +1589,7 @@ public:
         {
             if(value)
             {
-                auto handler = prepare_to_send(value);
+                auto handler = load(value);
                 if(handler) push_new_file_handler(handler);
             }
             else std::cout << "no value" << std::endl;
@@ -1747,7 +1635,180 @@ public:
             }
         }
     }
-    file_send_handler* prepare_to_send(const char* path)
+    void trcm(const char* command)
+    {
+        auto l = lex.base(command, nullptr, " :");
+        if(l.begin == nullptr) return;
+        lex.default_context->set_min(0);
+        lex.default_context->unique = true;
+
+        DArray<int> list;
+        DArray<char> options;
+        list = lex.list(l.end);
+        options = lex.options(l.end, nullptr);
+        auto path = lex.lex(l.end,nullptr, "</ | \\> <$min:2>");
+        show_progress = true;
+//        std::cout << "list size: " << list.size() << " trcm base lexeme: ";
+//        lex.print_lexeme(l);
+//        std::cout << "path: ";
+//        lex.print_lexeme(path);
+
+
+        if(lex.base_equal(l, "dir"))
+        {
+            const char* pos = nullptr;
+            if(lex.lex(l.end, nullptr, "<=open>").begin) //add dir
+            {
+                add_dir(path.begin);
+            }
+            if( (pos = lex.lex(l.end, nullptr, "<=choose>").begin)) //choose
+            {
+                int index = lex.number(pos, nullptr);
+                if(index > 0 && index < dir.size())
+                    choose_dir(lex.number(pos, nullptr));
+            }
+            if( (pos = lex.lex(l.end, nullptr, "<=list>").begin)) //print list
+            {
+                print_dir_list();
+            }
+            if( (pos = lex.lex(l.end, nullptr, "<=loadf>").begin)) //load file
+            {
+                auto DIR = dir.begin() + current_dir_index;
+                int file_index = lex.number(l.end, nullptr) - 1;
+                if(file_index > 0 && file_index < (*DIR)->size)
+                {
+                    auto handler = load((*DIR)->file_list[file_index].path().c_str());
+                    if(handler) push_new_file_handler(handler);
+                }
+            }
+            if( (pos = lex.lex(l.end, nullptr, "<=print>").begin)) //print dir
+            {
+                print_dir(lex.number(l.end, nullptr));
+            }
+            if(lex.lex(l.end, nullptr, "<=printc>").begin) //print current dir
+            {
+                print_dir(current_dir_index);
+            }
+        }
+        //-----------------------------------
+        if(lex.base_equal(l, "get"))
+        {
+//            qDebug() << "COMMAND: GET";
+            if(lex.lex(l.end,nullptr, "<=all>").begin)
+                push_all(path.begin);
+
+            else if(lex.lex(l.end, nullptr, "<=plan>").begin) start_plan();
+            else for(int i=0;i!=list.size();++i)
+                    push_file_request(recv_handler(list[i]), path.begin);
+        }
+        if(lex.base_equal(l, "getp"))
+        {
+//            qDebug() << "COMMAND: GETP";
+            push_multi_files_request(merge_handlers(list), path.begin);
+        }
+        if(lex.base_equal(l, "attach"))
+        {
+//            qDebug() << "COMMAND: ATTACH";
+            push_attach_request(merge_handlers(list), path.begin);
+        }
+        if(lex.base_equal(l, "force"))
+        {
+//            qDebug() << "COMMAND: FORCE";
+            int index = lex.number(l.end,nullptr);
+
+            push_force_request(recv_handler(index),path.begin);
+        }
+        //-------------------------------------
+        if(lex.base_equal(l, "plan"))
+        {
+//            qDebug() << "COMMAND: PLAN";
+            if(lex.lex(l.end, nullptr, "<=to>").begin)
+            {
+                int to = list.front();
+                list.pop_front();                
+                auto _to = recv_handler(to);
+                for(int i=0;i!=list.size();++i)
+                    plan_to(_to, recv_handler(list[i]), path.begin);
+            }
+            else
+                for(int i=0;i!=list.size();++i)
+                    plan_file(recv_handler(list[i]), path.begin);
+        }
+        if(lex.base_equal(l, "planp"))
+        {
+//            qDebug() << "COMMAND: PLANP";
+            if(!list.empty())
+            {
+                plan_file(recv_handler(list.front()), path.begin);
+                list.pop_front();
+            }
+            for(int i=0;i!=list.size();++i)
+                plan_to(recv_plan.list.back(), recv_handler(list[i]), path.begin);
+        }
+        if(lex.base_equal(l, "planr"))
+        {
+//            qDebug() << "COMMAND: PLANR";
+            for(int i=0;i!=list.size();++i)
+                recv_plan.pull(recv_handler(list[i]));
+        }
+        if(lex.base_equal(l, "show"))
+        {
+//            qDebug() << "COMMAND: SHOW";
+            if(lex.lex(l.end, nullptr, "<=plan>").begin)
+            {
+                print_plan();
+            }
+            else if(lex.lex(l.end, nullptr, "<=otable>").begin)
+            {
+                print_out_table();
+            }
+            else if(lex.lex(l.end, nullptr, "<=ltable>").begin)
+            {
+                print_local_table();
+            }
+        }
+        //---------------------------------
+        if(lex.base_equal(l, "load"))
+        {
+            auto handler = load(path.begin);
+            if(handler) push_new_file_handler(handler);
+        }
+        if(lex.base_equal(l, "m"))
+        {
+//            qDebug() << "COMMAND: M";
+
+            const char* mes = lex.lex(l.end, nullptr, "<$min:1>").begin;
+            if(mes)
+            {
+                int m_size = strlen(mes) + 1;
+                memcpy(message_buffer.data + message_buffer.pos, mes, m_size);
+                push_message(message_buffer.pos, m_size);
+                message_buffer.pos += m_size;
+            }
+
+        }
+
+        if(lex.base_equal(l, "test"))
+        {
+            trcm("load G:/DH/e1.mkv");
+            trcm("load G:/DH/e2.mkv");
+        //    trcm("load G:/DH/gz.mkv");
+        //    trcm("load G:/DH/sv_test.mkv");
+            trcm("load G:/DH/t1.txt");
+            trcm("load G:/DH/ost.zip");
+            trcm("load G:/DH/pic_car.jpg");
+        }
+        for(int i=0;i!=options.size();++i)
+        {
+            switch(options[i])
+            {
+            case 'v': show_progress = false; break;
+            case 'p': show_progress = true; break;
+            }
+        }
+
+    }
+    file_handler* load(const char* path)
     {
         auto b = send_map.cbegin();
         while( b != send_map.cend() )
@@ -1786,8 +1847,9 @@ public:
             v = tb + (double)gb/1024; sprintf(shortSize, "%.2f Tb", v);   break;
         }
 
-        file_send_handler* h = alloc_send_handler();
+        file_handler* h = get_file_handler();
         h->f = new file_info;
+        h->si = get_send_info();
         h->f->path = path;
         h->f->name = pn;
         h->f->shortSize = shortSize;
@@ -1809,6 +1871,8 @@ public:
         print_file_info(h->f);
         return h;
     }
+private:
+    DLexeme lex;
 //v 1.5.0
 };
 
