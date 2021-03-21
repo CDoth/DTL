@@ -126,13 +126,13 @@ public:
     explicit DThreadMaster(int max_threads) : thread_box(max_threads) {}
     DThreadHandler* get_thread()
     {
-        DBox<DThreadHandler>::item_holder ih = thread_box.pull();
-        if(ih)
-        {
-            ih->clear_close_f();
-            ih->set_close_f(*ih);
-        }
-        return ih;
+//        DBox<DThreadHandler>::item_holder ih = thread_box.pull();
+//        if(ih)
+//        {
+//            ih->clear_close_f();
+//            ih->set_close_f(*ih);
+//        }
+//        return ih;
     }
 
     void join_all()

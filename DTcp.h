@@ -147,7 +147,7 @@ struct recv_item
     script s;
 };
 
-typedef DArray<send_item, SlowWriteFastRead> send_content;
+typedef DArray<send_item, Direct> send_content;
 struct SENDC
 {
     SENDC(DTcp* _t) : t(_t), i(nullptr), e(nullptr) {}
@@ -226,7 +226,7 @@ struct SENDC
         return false;
     }
 };
-typedef DArray<recv_item, SlowWriteFastRead> recv_content;
+typedef DArray<recv_item, Direct> recv_content;
 struct RECVC
 {
     RECVC(DTcp* _t) : t(_t), i(nullptr), e(nullptr) {}

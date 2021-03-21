@@ -1,9 +1,6 @@
 #ifndef DITEM_H
 #define DITEM_H
 #include "DMetaType.h"
-
-#include <QDebug>
-
 namespace DItems
 {
     struct item_data
@@ -90,6 +87,7 @@ namespace DItems
         typedef typename _mtype<T>::type type;
         MetaItem() : type(){}
         MetaItem(const T&v) : type(v){}
+        operator type() {return *this;}
     };
 
 }

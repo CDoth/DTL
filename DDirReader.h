@@ -2,7 +2,7 @@
 #define DDIRREADER_H
 
 #include <vector>
-#include <string>
+#include <string.h>
 #include <dirent.h>
 #include <fstream>
 
@@ -62,4 +62,21 @@ public:
     std::vector<dir*> directories;
 };
 
+/*
+ test block
+    DirReader dr;
+    dr.set_prefix("/root");
+    auto dir = dr.add_dir("DTL");
+    printf("dr size: %d\n", dr.size());
+
+    printf("dir: full_path: %s name: %s size: %d\n", dir->full_path.c_str(), dir->name.c_str(), dir->size);
+    auto db = dir->begin();
+    auto de = dir->end();
+    int i=0;
+    while( db != de )
+    {
+        printf("%d file: name: %s size: %d\n", i++, (*db).name().c_str(), (*db).size());
+        ++db;
+    }
+ */
 #endif // DDIRREADER_H

@@ -30,4 +30,17 @@ template <class T> void zero_mem (T*m, int s) {if(m&&s) memset(m,0,range<T>(s));
 template <class T> void clear_mem(T*m, int s) {zero_mem(m,s); free_mem(m);}
 template <class T> void copy_mem (T* _dst, T* _src, int s) {if(_dst&&_src&&s) memcpy(_dst, _src, range<T>(s));}
 
+/*
+ test block
+
+    int* p = get_mem<int>(10);
+//    int* p = nullptr;
+    set_mem(p, 10);
+    for(int i=0;i!=10;++i) p[i] = i;
+//    zero_mem(p,10);
+//    free_mem(p);
+    for(int i=0;i!=10;++i) printf("%d\n", p[i]);
+    free_mem(p);
+    printf("not free: %d\n", NOT_FREE_DMEM);
+ */
 #endif // DMEM_H

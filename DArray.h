@@ -8,7 +8,9 @@
 struct FastWriteSlowRead { enum {FastWrite = true}; };
 struct SlowWriteFastRead { enum {FastWrite = false}; };
 
-template <class T, class WriteModel = FastWriteSlowRead>
+enum DArrayWriteMode {Direct, Undirect, Auto};
+//template <class T, class WriteModel = FastWriteSlowRead>
+template <class T, DArrayWriteMode WriteMode = Auto>
 class DArray
 {
     struct LargeType {enum {DirectPlacement = false};}; //rename it: this mean data array contain pointer to tartget object
@@ -17,9 +19,17 @@ class DArray
     struct ComplexType {};
 
 
-    struct __metatype : std::conditional<  (!WriteModel::FastWrite), SmallType,  typename std::conditional< (sizeof(T) > sizeof(void*)),  LargeType, SmallType>::type>::type,
+//    struct __metatype : std::conditional<  (!WriteModel::FastWrite), SmallType,  typename std::conditional< (sizeof(T) > sizeof(void*)),  LargeType, SmallType>::type>::type,
+//                        std::conditional<  (std::is_trivial<T>::value), TrivialType, ComplexType>::type
+//      {};
+
+    struct __metatype : std::conditional<   (WriteMode == Auto),
+    typename std::conditional< (sizeof(T) > sizeof(void*)),  LargeType, SmallType>::type,
+    typename std::conditional< (WriteMode == Undirect),  LargeType, SmallType>::type>::type,
                         std::conditional<  (std::is_trivial<T>::value), TrivialType, ComplexType>::type
       {};
+
+
 public:
     struct complex_iterator;
     struct const_complex_iterator;
@@ -52,7 +62,7 @@ public:
     {
         if(w != a.w)
         {
-            DArray<T, WriteModel> tmp(a);
+            DArray<T, WriteMode> tmp(a);
             tmp.swap(*this);
         }
         return *this;
@@ -118,13 +128,10 @@ public:
             w->refUp();
         }
     }
-
     inline void make_unique()
     {
         w->refDown();
-//        if(w->is_otherSide() && w->otherSideRefs() == 0) delete w->otherSide();
         w = new DDualWatcher(clone(), CloneWatcher);
-
     }
 public:
     const char* type_size_name() const {return _type_size(__metatype());}
@@ -148,10 +155,24 @@ public:
         while( b != e ) if( *b++ == t ) ++i;
         return i;
     }
+    bool contain(const T& t) const
+    {
+        auto b = constBegin();
+        auto e = constEnd();
+        while( b != e ) if(*b++ == t) return true;
+        return false;
+    }
+    bool contain(const T& t, int start, int end) const
+    {
+        auto b = constBegin() + start;
+        auto e = constBegin() + end;
+        while( b != e ) if(*b++ == t) return true;
+        return false;
+    }
     void append(){detach();  _push(data()->_get_place(), __metatype());}
     void append(const T& t) {detach();  _push(t, data()->_get_place(), __metatype());}
     void append(const T& t, int n) {detach(); while(n--) append(t);}
-    void append(const DArray<T, WriteModel>& from)
+    void append_line(const DArray<T, WriteMode>& from)
     {
         if(__metatype::DirectPlacement && std::is_trivial<T>::value)
         {
@@ -165,7 +186,6 @@ public:
             auto e = from.constEnd();
             while( b != e )append(*b++);
         }
-
     }
     void reserve(int s) {detach(); data()->_reserve(s);}
     void remove(iterator it){detach();_remove(it, __metatype());}
@@ -279,10 +299,8 @@ public:
     }
     void _push(const T& t, void* place, SmallType)
     {
-        if(std::is_trivial<T>::value)
-            *reinterpret_cast<T*>(place) = t;
-        else
-            new (place) T(t);
+        if(std::is_trivial<T>::value) *reinterpret_cast<T*>(place) = t;
+        else new (place) T(t);
     }
     void _push(const T& t, void* place, LargeType)
     {
@@ -291,7 +309,6 @@ public:
 
     void _insert( const T& t, int i)
     {
-        printf("insert: move size: %d\n", (data()->size - i) * sizeof(stored_type));
            data()->_reserve_up();
            memmove((data()->t() + i + 1),(data()->t() + i), (data()->size - i) * sizeof(stored_type));
            _push(t, data()->t() + i, __metatype());
@@ -348,5 +365,58 @@ public:
     }
 };
 
+
+/*
+ test block
+    DArray<int> v(5);
+    DArray<int> v2 = v;
+//    v.setMode(ShareWatcher);
+//    v2.setMode(ShareWatcher);
+    v[0] = 111;
+    v[1] = 222;
+    v[2] = 333;
+    v[3] = 444;
+    v[4] = 555;
+    v2.append(818);
+    v.insert(777, 1);
+    v.swap(v2);
+    v.push_back(666);
+
+    printf("v: size: %d reserved: %d available: %d cell_size: %d\n", v.size(), v.reserved(), v.available(), v.cell_size());
+    printf("v2: size: %d reserved: %d available: %d cell_size: %d\n", v2.size(), v2.reserved(), v2.available(), v2.cell_size());
+//    printf("empty: %d type_size_name: %s type_signature_name: %s\n", v.empty(), v.type_size_name(), v.type_signature_name());
+    auto b = v.begin();
+    auto e = v.end();
+    while( b!= e ) printf("v: %d\n", *b++);
+    for(int i=0;i!=v2.size();++i) printf("v2: %d\n", v2[i]);
+    printf("front: %d back:%d\n", v.front(), v.back());
+    printf("first: %d last: %d\n", *v.first(), *v.last());
+
+    v2 = v1;
+    v1.setMode(ShareWatcher);
+    v2.setMode(ShareWatcher);
+    v1[0] = 111;
+    v1[1] = 222;
+//    v1.setMode(CloneWatcher);
+//    v2.setMode(CloneWatcher);
+//    v2.make_unique();
+    v2[0] = 333;
+
+
+    qDebug()<<"v1 watcher:";
+    qDebug()<<v1.w<<v1.w->mode()<<"refs:"<<v1.w->refs()<<"is clone:"<<v1.w->is_clone()<<"is share:"<<v1.w->is_share()<<"is unique:"<<v1.w->is_unique()
+           <<"is other side:"<<v1.w->is_otherSide()<<"other side refs:"<<v1.w->otherSideRefs();
+    qDebug()<<"v2 watcher:";
+    qDebug()<<v2.w<<v1.w->mode()<<"refs:"<<v2.w->refs()<<"is clone:"<<v2.w->is_clone()<<"is share:"<<v2.w->is_share()<<"is unique:"<<v2.w->is_unique()
+           <<"is other side:"<<v2.w->is_otherSide()<<"other side refs:"<<v2.w->otherSideRefs();
+
+    auto b = v1.begin();
+    auto e = v1.end();
+    while( b != e ) printf("v1 value: %d\n", *b++);
+    qDebug()<<"---------";
+    b = v2.begin();
+    e = v2.end();
+    while( b != e ) printf("v2 value: %d\n", *b++);
+ * */
 
 #endif // DARRAY_H

@@ -1,5 +1,4 @@
 #include "DDirReader.h"
-#include <QDebug>
 size_t get_file_size(const char* path)
 {
     std::ifstream f(path, std::ios::in | std::ios::binary);

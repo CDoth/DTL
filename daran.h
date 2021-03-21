@@ -3,8 +3,7 @@
 
 #include <stdint.h>
 #include <iostream>
-#include <QVector>
-#include <QDebug>
+#include <vector>
 static inline bool buffer_compare(const void* buffer1, const void* buffer2, int size)
 {
     if(buffer1 == nullptr || buffer2 == nullptr) return false;

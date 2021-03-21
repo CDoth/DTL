@@ -1,7 +1,8 @@
 #ifndef DBOX_H
 #define DBOX_H
 #include "DItem.h"
-
+#include "DArray.h"
+/*
 template <class T, class TItem = DItems::MetaItem<T>>
 class DBox
 {
@@ -121,4 +122,66 @@ DBox<T,I>::~DBox<T, I>()
 {
     for(auto item = start; item; item = item->strict_next) delete item;
 }
+*/
+
+template <class T, class TItem = DItems::MetaItem<T>>
+class DBox
+{
+public:
+    DBox() { current = 0; }
+    explicit DBox(int n)
+    {
+        while(n--) store.append(TItem());
+        current = 0;
+    }
+    DBox(int n, const T& t)
+    {
+        while(n--) store.append(TItem(t));
+        current = 0;
+    }
+
+    void setValue(const T&t, int i)
+    {
+        store[i] = t;
+    }
+    void addItem()
+    {
+        store.append();
+    }
+    void addItem(const T&t)
+    {
+        store.append(t);
+    }
+
+    typedef TItem* item_p;
+    item_p pull()
+    {
+        return current == store.size() ? nullptr : store.begin() + current++;
+    }
+    int  push(item_p i)
+    {
+        bool b = store.contain(*i);
+//        if(i && store.contain(*i, 0, current))
+//        {
+//            std::swap(*i, *(store.begin() + --current));
+//        }
+        return available();
+    }
+    int size() const
+    {
+        return store.size();
+    }
+    int available() const
+    {
+        return store.size() - current;
+    }
+
+
+
+private:
+    int current;
+    DArray<TItem> store;
+};
+
+
 #endif // DBOX_H
