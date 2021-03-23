@@ -154,7 +154,7 @@ struct SENDC
     inline bool empty() const {return c.empty();}
     inline void add_item(send_item item) {c.push_back(item);}
     inline void reserve(int s) {c.reserve(s);}
-    inline void complete() {i = c.constBegin(); e = c.constEnd();}
+    inline void complete() {i = c.begin(); e = c.end();}
     inline void clear() {c.clear();}
     inline bool unlocked_send_all()
     {
@@ -215,8 +215,8 @@ struct SENDC
     send_iterator i;
     send_iterator e;
 
-    inline send_iterator begin() const {return c.constBegin();}
-    inline send_iterator end() const {return c.constEnd();}
+    inline send_iterator begin() const {return c.begin();}
+    inline send_iterator end() const {return c.end();}
     inline bool send_one(send_iterator it)
     {
         int sb = 0;

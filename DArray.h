@@ -5,37 +5,33 @@
 #include "dmem.h"
 
 #include <QDebug>
-struct FastWriteSlowRead { enum {FastWrite = true}; };
-struct SlowWriteFastRead { enum {FastWrite = false}; };
 
 enum DArrayWriteMode {Direct, Undirect, Auto};
-//template <class T, class WriteModel = FastWriteSlowRead>
 template <class T, DArrayWriteMode WriteMode = Auto>
 class DArray
 {
-    struct LargeType {enum {DirectPlacement = false};}; //rename it: this mean data array contain pointer to tartget object
-    struct SmallType {enum {DirectPlacement = true};}; //rename it: this mean data array contain real object
+    struct LargeType {enum {DirectPlacement = false};};
+    struct SmallType {enum {DirectPlacement = true};};
     struct TrivialType {};
     struct ComplexType {};
 
-
-//    struct __metatype : std::conditional<  (!WriteModel::FastWrite), SmallType,  typename std::conditional< (sizeof(T) > sizeof(void*)),  LargeType, SmallType>::type>::type,
-//                        std::conditional<  (std::is_trivial<T>::value), TrivialType, ComplexType>::type
-//      {};
 
     struct __metatype : std::conditional<   (WriteMode == Auto),
     typename std::conditional< (sizeof(T) > sizeof(void*)),  LargeType, SmallType>::type,
     typename std::conditional< (WriteMode == Undirect),  LargeType, SmallType>::type>::type,
                         std::conditional<  (std::is_trivial<T>::value), TrivialType, ComplexType>::type
       {};
-
-
 public:
     struct complex_iterator;
     struct const_complex_iterator;
-    typedef typename std::conditional< (__metatype::DirectPlacement), T*, complex_iterator>::type iterator;
-    typedef typename std::conditional< (__metatype::DirectPlacement), const T*, const_complex_iterator>::type const_iterator;
-    typedef typename std::conditional< (__metatype::DirectPlacement), T, T*>::type stored_type;
+    typedef typename std::conditional< (__metatype::DirectPlacement), T*, complex_iterator >::type iterator;
+    typedef typename std::conditional< (__metatype::DirectPlacement), const T*, const_complex_iterator >::type const_iterator;
+    typedef typename std::conditional< (__metatype::DirectPlacement), T, T* >::type stored_type;
+    typedef typename std::conditional< (__metatype::DirectPlacement), T const, T*const >::type const_stored_type;
+    typedef stored_type* raw_iterator;
+    typedef const_stored_type* const_raw_iterator;
+
+
 
     DArray()
     {
@@ -70,8 +66,10 @@ public:
 
     struct complex_iterator
     {
+        typedef T* pointer_t;
         complex_iterator() : p(nullptr){}
         complex_iterator(T** _p) : p(_p){}
+        inline pointer_t ptr() {return *p;}
         inline operator T**() {return p;}
         inline T& operator*() const {return **p;}
         inline T* operator->() const {return *p;}
@@ -85,12 +83,15 @@ public:
         inline  bool operator!=(const const_complex_iterator& it) const noexcept { return p!=it.p; }
         inline complex_iterator operator+(int i) const {return complex_iterator(p+i);}
         inline complex_iterator operator-(int i) const {return complex_iterator(p-i);}
+
         T** p;
     };
     struct const_complex_iterator
     {
+        typedef T*const pointer_t;
         const_complex_iterator() : p(nullptr){}
         const_complex_iterator(T*const* _p) : p(_p){}
+        inline pointer_t ptr() {return *p;}
         inline operator T*const*() {return p;}
         inline const T& operator*() const {return **p;}
         inline const T* operator->() const {return *p;}
@@ -106,15 +107,21 @@ public:
     };
 
 
+
+    raw_iterator raw_begin() {detach(); return data()->t();}
+    raw_iterator raw_end() {detach(); return data()->t() + data()->size;}
+    const_raw_iterator raw_begin() const {return data()->t();}
+    const_raw_iterator raw_end() const {return data()->t() + data()->size;}
+
     iterator begin() {detach(); return data()->t();}
     iterator end() {detach(); return data()->t() + data()->size;}
     iterator first() {detach(); return begin();}
     iterator last(){detach(); return data()->t() + data()->size - 1;}
 
-    const_iterator constBegin() const {return data()->t();}
-    const_iterator constEnd() const {return data()->t() + data()->size;}
-    const_iterator constFirst() const {return begin();}
-    const_iterator constLast() const {return data()->t() + data()->size - 1;}
+    const_iterator begin() const {return data()->t();}
+    const_iterator end() const {return data()->t() + data()->size;}
+    const_iterator first() const {return begin();}
+    const_iterator last() const {return data()->t() + data()->size - 1;}
 //-------------------------------------------------------------------------------------------
 public:
     void setMode(WatcherMode m)
@@ -133,6 +140,10 @@ public:
         w->refDown();
         w = new DDualWatcher(clone(), CloneWatcher);
     }
+    inline bool is_unique() const
+    {
+        return w->is_unique();
+    }
 public:
     const char* type_size_name() const {return _type_size(__metatype());}
     const char* type_signature_name() const {return _type_signature(__metatype());}
@@ -147,28 +158,46 @@ public:
     const T& operator[](int i) const {return _get_ref(i);}
     const T& at(int i) const {if(i >= 0 && i < data()->size) return _get_ref(i);}
 
-    int count(const T& t) const
+    int count(const T& t, int start_pos = 0, int end_pos = 0) const
     {
-        auto b = constBegin();
-        auto e = constEnd();
+        if(start_pos >= end_pos) start_pos = end_pos = 0;
+        auto b = begin() + start_pos;
+        auto e = end_pos ? begin() + end_pos : end();
         int i=0;
         while( b != e ) if( *b++ == t ) ++i;
         return i;
     }
-    bool contain(const T& t) const
+    const_iterator contain(const T& t) const
     {
-        auto b = constBegin();
-        auto e = constEnd();
-        while( b != e ) if(*b++ == t) return true;
-        return false;
+        auto b = begin();
+        auto e = end();
+        while( b != e ) if(*b++ == t) return b;
+        return nullptr;
     }
-    bool contain(const T& t, int start, int end) const
+    const_iterator contain_within(const T& t, int start = 0, int end = 0) const
     {
-        auto b = constBegin() + start;
-        auto e = constBegin() + end;
-        while( b != e ) if(*b++ == t) return true;
-        return false;
+        if(start >= end) start = end = 0;
+        auto b = begin() + start;
+        auto e = begin() + end;
+        while( b != e ) if(*b++ == t) return b;
+        return nullptr;
     }
+    iterator contain(const T& t)
+    {
+        auto b = begin();
+        auto e = end();
+        while( b != e ) if(*b++ == t) return b;
+        return nullptr;
+    }
+    iterator contain_within(const T& t, int start = 0, int end = 0)
+    {
+        if(start >= end) start = end = 0;
+        auto b = begin() + start;
+        auto e = begin() + end;
+        while( b != e ) if(*b++ == t) return b;
+        return nullptr;
+    }
+
     void append(){detach();  _push(data()->_get_place(), __metatype());}
     void append(const T& t) {detach();  _push(t, data()->_get_place(), __metatype());}
     void append(const T& t, int n) {detach(); while(n--) append(t);}
@@ -194,8 +223,8 @@ public:
     void remove(const T& v)
     {
         detach();
-        auto b = constBegin();
-        auto e = constEnd();
+        auto b = begin();
+        auto e = end();
         int i=0;
         while( b != e )
         {
@@ -214,6 +243,16 @@ public:
     void replace(int i, const T& v) {if(i >= 0 && i < data()->size) {detach(); _get_ref(i) = v;}}
     void swap(DArray& with){std::swap(w, with.w);}
     void insert(const T& v, int pos) {detach(); _insert(v, pos);}
+
+    void element_swap(int first, int second)
+    {
+        std::swap( *(data()->t() + first ), *(data()->t() + second) );
+    }
+    void element_swap(iterator first, iterator second)
+    {
+        if(__metatype::DirectPlacement) std::swap( *first, *second );
+        else std::swap( *static_cast<T**>(first), *static_cast<T**>(second) );
+    }
 public:
     struct Data
     {
@@ -258,8 +297,8 @@ public:
     {
         Data* _d = new Data(sizeof(stored_type));
         _d->_reserve(data()->alloc);
-        auto b_source = constBegin();
-        auto e_source = constEnd();
+        auto b_source = begin();
+        auto e_source = end();
         while(b_source != e_source) _push(*b_source++, _d->_get_place(), __metatype());
         return _d;
     }
@@ -317,13 +356,13 @@ public:
     void _remove( iterator it, SmallType)
     {
         if(!std::is_trivial<T>::value) it->~T();
-        memmove( it,  it+1,  (constEnd() - (it+1)) * sizeof(stored_type)  );
+        memmove( it,  it+1,  (end() - (it+1)) * sizeof(stored_type)  );
         --data()->size;
     }
     void _remove( iterator it, LargeType )
     {
         delete &*it;
-        memmove( it,  it+1,  (constEnd() - (it+1)) * sizeof(stored_type)  );
+        memmove( it,  it+1,  (end() - (it+1)) * sizeof(stored_type)  );
         --data()->size;
     }
     void _remove( int i, SmallType )
