@@ -201,11 +201,10 @@ void DLogContext::start_init()
     c_print = default_c_print;
     f_print = default_f_print;
 
-    message_counter = 1;
+    message_counter = 0;
 }
 void DLogContext::out(const char* o)
 {
-    ++message_counter;
     if(parse_to_console)
     {
         c_print(o);
@@ -246,6 +245,7 @@ void DLogContext::add_header(const char *fname)
     time_t t = time(NULL);
     struct tm now = *localtime(&t);
 
+    ++message_counter;
     if(hr.cdate)
     {
         PUSH_TO_BUFFER("[D: %d.%d.%d]", now.tm_mday, now.tm_mon+1, now.tm_year+1900);

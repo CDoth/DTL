@@ -6,6 +6,9 @@
 #include <time.h>
 #include <stdint.h>
 
+#include <cstddef>
+#include <iostream>
+#include <stddef.h>
 
 // add std::nullptr_t
 // -: new line in destructor of global objects
@@ -203,25 +206,25 @@ enum format_flag
     template <class ... Args>
     void log(const char* fmt, Args ... a) //to raw context
     {
-        DLogMaster().with_header().log(fmt, a...);
+        DLogMaster(&gl_raw_context, true).with_header().log(fmt, a...);
     }
 
     template <class ... Args>
     void log(DLogContext* c, const char* fmt, Args ... a)
     {
-        DLogMaster (c).with_header().log(fmt, a...);
+        DLogMaster (c, true).with_header().log(fmt, a...);
     }
 
     template <class ... Args>
     void log(const char* fname, const char* fmt, Args ... a)
     {
-        DLogMaster (&gl_raw_context).with_header(fname).log(fmt, a...);
+        DLogMaster (&gl_raw_context, true).with_header(fname).log(fmt, a...);
     }
 
     template <class ... Args>
     void log(const char* fname, DLogContext* c, const char* fmt, Args ... a) //to any context with func name
     {
-        DLogMaster (c).with_header(fname).log(fmt, a...);
+        DLogMaster (c, true).with_header(fname).log(fmt, a...);
     }
 
     void sep(DLogContext* c = nullptr);
