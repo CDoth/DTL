@@ -52,7 +52,7 @@ void DLogContext::file_add   (const char* path, const char *key)
     parse_file(true);
 
     FILE* f = nullptr;
-    if( (f = fopen(path, "w")) )
+    if( (f = fopen(path, "a")) )
     {
         pfd file_desc = alloc_fd();
         file_desc->file = f;
@@ -116,7 +116,7 @@ void DLogContext::file_remove(const char* key)
     }
 }
 //---------------------------------------------------------------------------------------
-void DLogContext::header_set_all(const bool &date, const bool &fname, const bool &ltime, const bool &rtime, const bool &mesnum, const bool &sname)
+void DLogContext::header_set_all(bool date, bool fname, bool ltime, bool rtime, bool mesnum, bool sname)
 {
     hr.cdate = date;
     hr.fname = fname;
@@ -141,7 +141,7 @@ void DLogContext::header_set_message(const char *ln)
         }
     }
 }
-void DLogContext::separator_set_size(const int& size)
+void DLogContext::separator_set_size(int size)
 {
     if(size)
     {
@@ -158,7 +158,7 @@ void DLogContext::separator_set_symb(const char& symb)
     sep_symb = symb;
     for(int i=0;i!=sep_size;++i) separator[i+0] = sep_symb;//1
 }
-void DLogContext::buffer_set_size(const int& size)
+void DLogContext::buffer_set_size(int size)
 {
     if(size > 0 && size < DLOGM_BUFFER_MAX_SIZE)
     {
@@ -200,9 +200,12 @@ void DLogContext::start_init()
 
     c_print = default_c_print;
     f_print = default_f_print;
+
+    message_counter = 1;
 }
 void DLogContext::out(const char* o)
 {
+    ++message_counter;
     if(parse_to_console)
     {
         c_print(o);
@@ -219,8 +222,7 @@ void DLogContext::out(const char* o)
 }
 void DLogContext::flush(const char* line)
 {
-    if(line)
-        out(line);
+    if(line) out(line);
     else
     {
         out(buffer);
@@ -250,7 +252,7 @@ void DLogContext::add_header(const char *fname)
     }
     if(hr.mnumb)
     {
-        PUSH_TO_BUFFER("[N: %d]", 0);
+        PUSH_TO_BUFFER("[N: %d]", message_counter);
     }
     if(hr.ltime)
     {
@@ -284,7 +286,7 @@ void DLogContext::add_header(const char *fname)
         if(  check_fflag(FLUSH_CONTENT) && !check_fflag(FLUSH_ALL)  ) new_line();
     }
 }
-bool DLogContext::check_fflag(DLogContext::format_flag f)
+bool DLogContext::check_fflag(format_flag f)
 {
     return (bool)(fflags&f);
 }
@@ -368,7 +370,7 @@ void DLogContext::parse_rtime(char *to)
     else   PUSH_TO_BUFFER("[R: %d:%d:%d:%d]", h, m, s, ms);
 }
 //---------------------------------------------------------------------------------------
-char *DLogContext::alloc_line(const int &size)
+char *DLogContext::alloc_line(int size)
 {
     char* nl = (char*)malloc(size+1);
     if(nl) memset(nl, 0, size+1);
@@ -396,24 +398,20 @@ void  DLogContext::free_line(char* line)
         free(line);
     }
 }
-void  DLogContext::zero_line(char *line, const int &size)
+void  DLogContext::zero_line(char *line, int size)
 {
     int s = size? size:strlen(line);
     memset(line, 0, s);
 }
 //===============================================================================================================
 //===============================================================================================================
-DLogMaster::DLogMaster(DLogContext *c)
+DLogMaster::DLogMaster(DLogContext *c, bool an) : auto_n(an)
 {
-    if(c) context = c;
-    else
-    {
-        context = &gl_raw_context;
-    }
+    context = c ? c : &gl_raw_context;
 }
 DLogMaster::~DLogMaster()
 {
-    if(!context->check_fflag(DLogContext::format_flag::FLUSH_ALL)) context->new_line();
+    if(!context->check_fflag(format_flag::FLUSH_ALL) && auto_n) context->new_line();
 }
 DLogMaster &DLogMaster::operator()(const char *_caller_name)
 {
@@ -473,6 +471,13 @@ DLogMaster &DLogMaster::operator <<(void *p)
     context->flush();
     return *this;
 }
+
+DLogMaster &DLogMaster::operator <<(std::nullptr_t)
+{
+    sprintf(context->buffer, "nullptr ");
+    context->flush();
+    return *this;
+}
 DLogMaster &DLogMaster::operator <<(DLogMaster& lm)
 {
     if(&lm == this)
@@ -484,9 +489,9 @@ DLogMaster &DLogMaster::operator <<(DLogMaster& lm)
 }
 DLogMaster &DLogMaster::operator <<(separator_t)
 {
-    if(!context->check_fflag(DLogContext::format_flag::FLUSH_ALL)) context->new_line();
+    if(!context->check_fflag(format_flag::FLUSH_ALL)) context->new_line();
     sep();
-    if(!context->check_fflag(DLogContext::format_flag::FLUSH_ALL)) context->new_line();
+    if(!context->check_fflag(format_flag::FLUSH_ALL)) context->new_line();
     return *this;
 }
 //---------------------------------------------------------------------

@@ -4,8 +4,6 @@
 #include "DWatcher.h"
 #include "dmem.h"
 
-#include <QDebug>
-
 enum DArrayWriteMode {Direct, Undirect, Auto};
 template <class T, DArrayWriteMode WriteMode = Auto>
 class DArray

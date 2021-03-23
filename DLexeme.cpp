@@ -33,8 +33,6 @@ bool DLexeme::is_special(char c, DLexeme::raw s)
 bool DLexeme::base_equal(const lexeme &l, DLexeme::raw sample)
 {
     bool res =  strlen(sample) == (size_t)l.size &&   buffer_compare(l.begin, sample, l.size) ;
-
-//    qDebug()<< " ----------- BASE EQUAL:"<<res;
     return res;
 }
 void DLexeme::print_lexeme(const lexeme &l, bool show_size)
@@ -214,32 +212,6 @@ DLexeme::lexeme DLexeme::lex(DLexeme::raw v, DLexeme::raw end, DLexeme::raw rule
         v = l.end;
     }
     return share_null;
-}
-void DLexeme::print_lex_context(const DLexeme::lex_context &c)
-{
-    qDebug()<<"min len:"<<c.min_len;
-    qDebug()<<"max len:"<<c.max_len;
-    qDebug()<<"lex whie list size:"<<c.len_wl.size();
-    qDebug()<<"direct mode:"<<c.direct_mode;
-    for(int i=0;i!=c.len_wl.size();++i)
-    {
-        qDebug()<<c.len_wl[i];
-    }
-    qDebug()<<"sublex list:"<<c.sub_lex.size();
-    int j=0;
-    for(int i=0;i!=c.sub_lex.size();++i)
-    {
-        auto _s = c.sub_lex[i];
-        while(_s)
-        {
-            std::cout << j++ << " sublex ";
-            std::cout <<_s << ":  ";
-            print_lexeme(_s->l);
-            std::cout << "n: "<< _s->n << " type: "<<_s->type << " next_or: "<<_s->next_or << std::endl;
-            _s = _s->next_or;
-            qDebug()<<"-----------";
-        }
-    }
 }
 void DLexeme::shift_lex(DLexeme::lexeme *l, int s)
 {

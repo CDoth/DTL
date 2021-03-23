@@ -33,7 +33,7 @@ public:
             {
                 if(*b == i)
                 {
-                    std::swap(*b, *(store.raw_begin() + current));
+                    std::swap(*b, *(store.raw_begin() + --current));
                     break;
                 }
                 ++b;
@@ -72,5 +72,34 @@ private:
     DArray<T, Undirect> store;
 };
 
+/*
+ test block
+    DBox<A> box;
+
+    box.addItem(11);
+    box.addItem(22);
+    box.addItem(33);
+
+    auto h1 = box.pull();
+    auto h2 = box.pull();
+    auto h3 = box.pull();
+
+    box.push(h3);
+
+    printf("size: %d available: %d in use: %d \n", box.size(), box.available(), box.in_use());
+
+    printf("Box:\n");
+    auto b = box.begin();
+    auto e = box.end();
+    while(b!=e) printf("%d\n", (*b++).v);
+    printf("Available:\n");
+    b = box.av_begin();
+    e = box.av_end();
+    while(b!=e) printf("%d\n", (*b++).v);
+    printf("In use:\n");
+    b = box.us_begin();
+    e = box.us_end();
+    while(b!=e) printf("%d\n", (*b++).v);
+ */
 
 #endif // DBOX_H

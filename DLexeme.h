@@ -65,18 +65,31 @@ public:
 
     DArray<int> numbers(raw v, raw end = nullptr, read_context* context = nullptr, raw special = nullptr);
     DArray<int> list(raw v, raw end = nullptr, raw special = nullptr, char sep = ',', read_context* context = nullptr );
-    DArray<char> options(raw v, raw end, raw special = nullptr, char prefix = '-', read_context* context = nullptr);
+    DArray<char> options(raw v, raw end = nullptr, raw special = nullptr, char prefix = '-', read_context* context = nullptr);
     int number(raw v, raw end, raw special = nullptr, read_context* context = nullptr);
     char option(raw v, raw end, raw special = nullptr, char prefix = '-', read_context* context = nullptr);
     lexeme lex(raw v, raw end, raw rule, raw special = nullptr);
 
     read_context* default_context;
 private:
-    void print_lex_context(const lex_context& c);
     void shift_lex(lexeme* l, int s);
     lex_context read_rule(raw rule);
     inline bool __check_block(sublex* sl, lexeme* l, bool direct_mode = false);
     inline bool _check_lex(lexeme* l, lex_context* c);
 };
 
+/*
+ test block
+    DLexeme lex;
+
+    const char* test1 = "qwe 12a656hasd zxcsd";
+    const char* test2 = "123 45 67 98 3 d 4rt ty65 23 we43xc 1 0 982 !2 ! 3";
+
+    auto l = lex.lex(test1, nullptr, "<#sd> <$max:5>");
+    DArray<int> list;
+    list = lex.numbers(test2);
+    for(int i=0;i!=list.size();++i) printf("%d num: %d\n",i, list[i]);
+
+    lex.print_lexeme(l);
+ */
 #endif // DLEXEME_H

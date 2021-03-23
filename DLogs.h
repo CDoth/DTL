@@ -6,6 +6,12 @@
 #include <time.h>
 #include <stdint.h>
 
+
+// add std::nullptr_t
+// -: new line in destructor of global objects
+// message counter in DLogContext
+// logs file rewrite
+// put flags out
 namespace DLogs
 {
 //------------------------------------------------------------------- log context:
@@ -15,6 +21,12 @@ namespace DLogs
 #define DLOGM_SEP_SIZE 15
 #define DLOGM_SEP_SYMB '-'
 
+enum format_flag
+{
+    FLUSH_ALL     = 0b00000001,
+    FLUSH_MESSAGE = 0b00000010,
+    FLUSH_CONTENT     = 0b00000100,
+};
 
     class DLogMaster;
     class DLogContext
@@ -25,8 +37,8 @@ namespace DLogs
         ~DLogContext();
 
         //----------parse
-        void parse_console(const bool& _state) {parse_to_console = _state;}
-        void parse_file   (const bool& _state) {parse_to_file    = _state;}
+        void parse_console(bool _state) {parse_to_console = _state;}
+        void parse_file   (bool _state) {parse_to_file    = _state;}
 
         void parse_console_tool(void (*__parse_c)(const char*))        {c_print = __parse_c;}
         void parse_file_tool   (void (*__parse_f)(FILE*, const char*)) {f_print = __parse_f;}
@@ -47,37 +59,32 @@ namespace DLogs
         };
 
 
-        void header_set_all(const bool& date   = false,
-                            const bool& fname  = false,
-                            const bool& ltime  = false,
-                            const bool& rtime  = false,
-                            const bool& mesnum = false,
-                            const bool& sname  = false);
+        void header_set_all(bool date   = false,
+                            bool fname  = false,
+                            bool ltime  = false,
+                            bool rtime  = false,
+                            bool mesnum = false,
+                            bool sname  = false);
         void header_set    (const header_resolution& _hr) {hr = _hr;}
 
-        void header_date_visibility  (const bool& _state) {hr.cdate = _state;}
-        void header_fname_visibility (const bool& _state) {hr.fname = _state;}
-        void header_ltime_visibility (const bool& _state) {hr.ltime = _state;}
-        void header_rtime_visibility (const bool& _state) {hr.mnumb = _state;}
-        void header_mesnum_visibility(const bool& _state) {hr.rtime = _state;}
-        void header_sname_visibility (const bool& _state) {hr.sname = _state;}
+        void header_date_visibility  ( bool _state) {hr.cdate = _state;}
+        void header_fname_visibility ( bool _state) {hr.fname = _state;}
+        void header_ltime_visibility ( bool _state) {hr.ltime = _state;}
+        void header_rtime_visibility ( bool _state) {hr.mnumb = _state;}
+        void header_mesnum_visibility( bool _state) {hr.rtime = _state;}
+        void header_sname_visibility ( bool _state) {hr.sname = _state;}
 
         void header_set_message(const char* ln);
         //----------separator
-        void separator_set_size(const int&  size);
+        void separator_set_size(int size);
         void separator_set_symb(const char& symb);
         //----------precision
-        void precision_float (const int& p) {float_precision  = p;}
-        void precision_double(const int& p) {double_precision = p;}
+        void precision_float (int p) {float_precision  = p;}
+        void precision_double(int p) {double_precision = p;}
         //----------buffer
-        void buffer_set_size(const int& size);
+        void buffer_set_size(int size);
 
-        enum format_flag
-        {
-            FLUSH_ALL     = 0b00000001,
-            FLUSH_MESSAGE = 0b00000010,
-            FLUSH_CONTENT     = 0b00000100,
-        };
+
         //----------format
         void format_set_flag(format_flag f) {fflags |= f;}
         void format_disable_flag(format_flag f) {fflags &= ~f;}
@@ -97,6 +104,8 @@ namespace DLogs
 
         bool parse_to_file;
         bool parse_to_console;
+
+        int message_counter;
 
         int sep_size;
         int sep_symb;
@@ -127,10 +136,10 @@ namespace DLogs
         void add_header(const char* fname = nullptr);
         bool check_fflag(format_flag);
         //------- buffers
-        char* alloc_line(const int& size);
+        char* alloc_line(int size);
         char* copy_line(const char* from);
         void  free_line(char* line);
-        void  zero_line(char* line, const int& size = 0);
+        void  zero_line(char* line, int size = 0);
         //------- file
         pfd alloc_fd();
         void free_fd(pfd);
@@ -155,7 +164,7 @@ namespace DLogs
     class DLogMaster
     {
     public:
-        DLogMaster(DLogContext* c = nullptr);
+        DLogMaster(DLogContext* c = nullptr, bool auto_n = false);
         ~DLogMaster();
 
         DLogMaster &operator() (const char* _caller_name = nullptr);
@@ -171,6 +180,7 @@ namespace DLogs
         DLogMaster &operator <<(const bool&   v);
         DLogMaster &operator <<(const long&   v);
         DLogMaster &operator <<(void* p);
+        DLogMaster &operator <<(std::nullptr_t);
         DLogMaster &operator <<(DLogMaster&);
         DLogMaster &operator <<(separator_t);
 
@@ -182,6 +192,7 @@ namespace DLogs
             context->flush();
         }
     private:
+        bool auto_n;
         DLogContext* context;
     };
 
@@ -215,9 +226,9 @@ namespace DLogs
 
     void sep(DLogContext* c = nullptr);
     //---------------------------------------------------------------------------------------
-#define DLM_RAW DLogMaster(&gl_raw_context).with_header(__func__)
-#define DLM_ERR DLogMaster(&gl_error_context).with_header(__func__)
-#define DLM_INF DLogMaster(&gl_info_context).with_header(__func__)
+#define DLM_RAW DLogMaster(&gl_raw_context, true).with_header(__func__)
+#define DLM_ERR DLogMaster(&gl_error_context, true).with_header(__func__)
+#define DLM_INF DLogMaster(&gl_info_context, true).with_header(__func__)
 
 #define DLM_CRAW(...)   log(__func__, __VA_ARGS__)
 #define DLM_CERR(...)   log(__func__, &gl_error_context,__VA_ARGS__)
@@ -226,4 +237,41 @@ namespace DLogs
 
 #define DLM_SEP(context) sep(context);
 }
+
+
+/*
+ test block:
+    void*p = nullptr;
+
+    gl_info_context.header_set_all(false, true, true, false, false, false);
+    gl_error_context.header_set_all(false, true, true, false, false, false);
+
+    gl_error_context.parse_console(true);
+    gl_error_context.file_add("/root/logs1", "logs1");
+    gl_error_context.file_add("/root/logs2", "logs2");
+    gl_error_context.header_set_message("THIS IS ERROR");
+
+    gl_error_context.format_set_flag(DLogContext::format_flag::FLUSH_CONTENT);
+
+
+    DLM_RAW << "HELLO RAW STREAM" << 123 << 87.023;
+    DLM_ERR << "HELLO ERROR STREAM" << false << 45.67<<p;
+    DLM_INF << "HELLO INFO STREAM" << true << 23.89;
+
+    gl_error_context.file_lock("logs2");
+
+    DLM_CRAW("C style raw stream %d %s %f %p", 453, "TEST", 98.23, p);
+    DLM_CINF("C style info stream %d %s %f %p", 453, "TEST", 98.23, p);
+    DLM_CERR("C style error stream %d %s %f %p", 453, "TEST", 98.23, p);
+
+    log("log1 test: %d %s %d %s", 123, "qwe", 456, "zxc");
+    log(&gl_error_context, "log2 test: %d %s %d %s", 123, "qwe", 456, "zxc");
+    log("MAIN_FUNC", "log3 test: %d %s %d %s", 123, "qwe", 456, "zxc");
+    log("MAIN_FUNC", &gl_info_context, "log4 test: %d %s %d %s", 123, "qwe", 456, "zxc");
+
+
+    lmraw << "RAW OBJECT:" << 456 << p << lmraw;
+    lmerror() << "ERRR OBJECT:" << 456 << p << lmerror;
+    lminfo << "INFO OBJECT:" << 456 << p << lminfo;
+ */
 #endif // DLOGS_H
