@@ -1,7 +1,6 @@
 #ifndef DMATRIX_H
 #define DMATRIX_H
 #include <DWatcher.h>
-#include <QDebug>
 #include "dmem.h"
 
 template <class T>
@@ -28,12 +27,12 @@ public:
 
     DMatrixData()
     {
-        qDebug()<<"DMatrixData: create empty"<<this;
+//        qDebug()<<"DMatrixData: create empty"<<this;
         clear();
     }
     DMatrixData(int _w, int _h, T* to = nullptr)
     {
-        qDebug()<<"DMatrixData: create with size:"<<_w<<_h<<this;
+//        qDebug()<<"DMatrixData: create with size:"<<_w<<_h<<this;
         clear();
         w = _w;
         h = _h;
@@ -43,7 +42,7 @@ public:
     }
     DMatrixData(const DMatrixData& r, T* to = nullptr)
     {
-        qDebug()<<"DMatrixData: copy from:"<<&r<<"to:"<<this<<"place:"<<to;
+//        qDebug()<<"DMatrixData: copy from:"<<&r<<"to:"<<this<<"place:"<<to;
         clear();
         w = r.w;
         h = r.h;
@@ -54,7 +53,7 @@ public:
     }
     ~DMatrixData()
     {
-        qDebug()<<"DMatrixData: destroy"<<this;
+//        qDebug()<<"DMatrixData: destroy"<<this;
         freeData();
         clear();
     }
@@ -67,7 +66,7 @@ public:
     DMatrix(int w, int h, T* place = nullptr);
 
     //-----------------------------------
-    DMatrix(const DMatrix&, T*p = nullptr);
+    DMatrix(const DMatrix& m, T*p = nullptr);
     DMatrix& operator=(const DMatrix&);
     //-----------------------------------
     ~DMatrix()
@@ -97,19 +96,24 @@ public:
     int area()   const {return data()->size;}
 
     void swap(DMatrix<T>&);
-    inline void make_unique() {detach();}
+    inline void make_unique()
+    {
+        w->refDown();
+        w = new DDualWatcher(clone(), CloneWatcher);
+    }
     void setMode(WatcherMode m)
     {
-        if(m != w->mode())
+        if(m != w->mode() && !(data()->placed && w->is_share()))
         {
             w->refDown();
             w = w->otherSide();
+            if(w->otherSideRefs() == 0)
+                w->disconnect();
             w->refUp();
         }
     }
-private:
-    DMatrixData<T>* clone()
-    {return new DMatrixData<T>(*data());}
+public:
+    DMatrixData<T>* clone() {return new DMatrixData<T>(*data());}
     void detach()
     {
         if(!w->is_unique())
@@ -133,6 +137,19 @@ private:
     {return reinterpret_cast<DMatrixData<T>* >(w->d());}
     const DMatrixData<T>* data() const
     {return reinterpret_cast<const DMatrixData<T>* >(w->d());}
+
+
+    void _set_mode(WatcherMode m)
+    {
+        if(m != w->mode())
+        {
+            w->refDown();
+            w = w->otherSide();
+            if(w->otherSideRefs() == 0)
+                w->disconnect();
+            w->refUp();
+        }
+    }
 };
 template <class T>
 DMatrix<T>::DMatrix()
@@ -144,22 +161,22 @@ template <class T>
 DMatrix<T>::DMatrix(int width, int height, T* place)
 {
     DMatrixData<T>* d = new DMatrixData<T>(width,height,place);
-    w = new DDualWatcher(d, CloneWatcher);
-    if(place) setMode(ShareWatcher);
+    auto mode = place ? ShareWatcher : CloneWatcher;
+    w = new DDualWatcher(d, mode);
 }
 template <class T>
 DMatrix<T>::DMatrix(const DMatrix<T>& m, T* place)
 {
     if(place)
     {
-        DMatrixData<T>* d = new DMatrixData<T>(m,place);
+        DMatrixData<T>* d = new DMatrixData<T>(*m.data(),place);
         w = new DDualWatcher(d, CloneWatcher);
-        setMode(ShareWatcher);
     }
     else
     {
         w = m.w;
         w->refUp();
+        _set_mode(CloneWatcher);
     }
 }
 template <class T>
@@ -243,7 +260,7 @@ void DMatrix<T>::unite(const DMatrix<T>& with)
     iterator b = begin();
     iterator e = end();
     const_iterator b2 = with.constBegin();
-    while(b!=e) *b++ += *b2;
+    while(b!=e) *b++ += *b2++;
 }
 template <class T>
 void DMatrix<T>::copy(const DMatrix& from)

@@ -3,6 +3,17 @@
 #include "DMatrix.h"
 #include "DArray.h"
 
+static void print_matrix2(const DMatrix<int>& m, const char* message = nullptr)
+{
+    if(message) printf("%s:\n", message);
+    for(int i=0;i!=m.width();++i)
+    {
+        for(int j=0;j!=m.height();++j)
+            printf("%d ", m[i][j]);
+        printf("\n");
+    }
+    printf("\n");
+}
 template <class T>
 class DMultiMatrixData
 {
@@ -21,7 +32,7 @@ public:
             auto it = data;
             while(s--)
             {
-                collection.mount(DMatrix<T>(width,height, it));
+                collection.append(DMatrix<T>(width,height, it));
                 it+=width*height;
             }
         }
@@ -36,16 +47,17 @@ public:
             auto it = data;
             auto src_mtx = d.collection.begin();
             auto src_e = d.collection.end();
+            width = d.width;
+            height = d.height;
             while(src_mtx != src_e)
             {
-                collection.mount(DMatrix<T>(*src_mtx, it));
+                collection.append(DMatrix<T>(*src_mtx, it));
                 it+=width*height; ++src_mtx;
             }
         }
     }
     ~DMultiMatrixData()
     {
-        qDebug()<<"MultiMatrixData: destroy"<<this;
         free_mem(data);
     }
 
@@ -99,10 +111,10 @@ public:
         if( w->pull() == 0) {delete data(); delete w;}
     }
 
-    int size() const {return this->get()->collection.size();}
-    int width() const {return this->get()->width;}
-    int height() const {return this->get()->height;}
-    int matrix_size() const {return this->get()->width * this->get()->height;}
+    int size() const {return data()->collection.size();}
+    int width() const {return data()->width;}
+    int height() const {return data()->height;}
+    int matrix_size() const {return data()->width * data()->height;}
 
     DMatrix<T>& operator[](int i){detach();return data()->collection[i];}
     const DMatrix<T>& operator[](int i) const {return data()->collection[i];}
@@ -117,15 +129,33 @@ public:
     data_iterator dataBegin() {detach(); return data()->data;}
     data_iterator dataEnd() {detach(); return data()->data + data()->data_size;}
 
-    const_iterator constBegin() const {return data()->collection.constBegin();}
-    const_iterator constEnd() const {data()->collection.constEnd();}
-    const_data_iterator constDataBegin() const {return data()->data;}
-    const_data_iterator constDataEnd() const {return data()->data + this->get()->data_size;}
+    const_iterator begin() const {return data()->collection.constBegin();}
+    const_iterator end() const {data()->collection.constEnd();}
+    const_data_iterator dataBegin() const {return data()->data;}
+    const_data_iterator dataEnd() const {return data()->data + this->get()->data_size;}
+
+    void make_unique()
+    {
+        w->refDown();
+        w = new DDualWatcher(clone(), CloneWatcher);
+    }
+    void setMode(WatcherMode m)
+    {
+        if(m != w->mode())
+        {
+            w->refDown();
+            w = w->otherSide();
+            if(w->otherSideRefs() == 0)
+                w->disconnect();
+            w->refUp();
+        }
+    }
+
 private:
 
     DMultiMatrixData<T>* clone()
     {
-        DMultiMatrixData<T>* d = new DMultiMatrixData<T>(*data());
+        return new DMultiMatrixData<T>(*data());
     }
     void detach()
     {
@@ -144,4 +174,39 @@ private:
     DDualWatcher* w;
 };
 
+
+/*
+ test block
+    DMultiMatrix<int> mm(3,  2,2);
+
+    mm[0].run(set_rand);
+    mm[1].run(set_rand);
+    mm[2].run(set_rand);
+
+    DMultiMatrix<int> mm2 = mm;
+    mm2[0].fill(23);
+
+
+    {
+        auto b = mm.begin();
+        auto e = mm.end();
+        while(b != e) print_matrix(*b++);
+
+        auto db = mm.dataBegin();
+        auto de = mm.dataEnd();
+        while(db != de) printf("%d ", *db++);
+        printf("\n");
+    }
+
+    {
+        auto b = mm2.begin();
+        auto e = mm2.end();
+        while(b != e) print_matrix(*b++);
+
+        auto db = mm2.dataBegin();
+        auto de = mm2.dataEnd();
+        while(db != de) printf("%d ", *db++);
+        printf("\n");
+    }
+ */
 #endif // DMULTIMATRIX_H

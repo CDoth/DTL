@@ -2,6 +2,7 @@
 #define DTHREADHANDLER_H
 
 #include "DArray.h"
+#include "DHolder.h"
 #include "DBox.h"
 
 #include <thread>
@@ -18,7 +19,7 @@ public:
     struct base_o
     {
         virtual void go() = 0;
-        virtual ~base_o(){};
+        virtual ~base_o(){}
     };
     template <class T>
     struct holder : public base_o
@@ -43,11 +44,12 @@ public:
             sleep_on_midle = std::chrono::milliseconds(0);
             sleep_on_end = std::chrono::milliseconds(0);
             sleep_on_repeat = std::chrono::milliseconds(0);
+            __el_begin = nullptr;
+            __el_end = nullptr;
         }
         ~thread_context()
         {
-            auto it = __el_begin;
-            while(it!=__el_end) delete *it++;
+            for(int i=0;i!=end_list.size();++i) delete end_list[i];
         }
         friend class DThreadHandler;
 
@@ -64,18 +66,18 @@ public:
         DArray<base_o*>::iterator __el_end;
     };
     template <class CloseF>
-    void set_close_f(CloseF cf)
+    void set_close_f(CloseF& cf)
     {
-        context.end_list.push_back(make_holder(cf));
-        context.__el_begin = context.end_list.begin();
-        context.__el_end = context.end_list.end();
+        context.get().end_list.push_back(make_holder(cf));
+        context.get().__el_begin = context.get().end_list.begin();
+        context.get().__el_end = context.get().end_list.end();
     }
 
-    void set_repeat(int n){if(n<1) n=1; context.repeat = n;}
-    void set_start_sleep(long ms) { context.sleep_on_start = std::chrono::milliseconds(ms);}
-    void set_midle_sleep(long ms) { context.sleep_on_midle = std::chrono::milliseconds(ms);}
-    void set_end_sleep(long ms) { context.sleep_on_end = std::chrono::milliseconds(ms);}
-    void set_repeat_sleep(long ms) { context.sleep_on_repeat = std::chrono::milliseconds(ms);}
+    void set_repeat(int n){if(n<1) n=1; context.get().repeat = n;}
+    void set_start_sleep(long ms) { context.get().sleep_on_start = std::chrono::milliseconds(ms);}
+    void set_midle_sleep(long ms) { context.get().sleep_on_midle = std::chrono::milliseconds(ms);}
+    void set_end_sleep(long ms) { context.get().sleep_on_end = std::chrono::milliseconds(ms);}
+    void set_repeat_sleep(long ms) { context.get().sleep_on_repeat = std::chrono::milliseconds(ms);}
 
     template <class TargetF, class ... Args>
     static void
@@ -84,8 +86,9 @@ public:
 
     template <class TargetF, class ... Args>
     static void
-    shell(thread_context* tc, TargetF&& tf,  Args&& ... a)
+    shell(DHolder<thread_context> tch, TargetF&& tf,  Args&& ... a)
     {
+        const thread_context* tc = tch.constPtr();
         std::this_thread::sleep_for(tc->sleep_on_start);
         int c=tc->repeat;
         while(c--) {
@@ -103,19 +106,43 @@ public:
     template <class TargetF, class ... Args>
     void start(TargetF tf, Args... a)
     {
-        join_if();
-        _t = std::thread(shell<TargetF, Args...>, &context, tf, a...);
+        join();
+        _t = std::thread(shell<TargetF, Args...>, context, tf, a...);
+//        _t.detach();
     }
-    void join_if()
+    inline void join()
     {if(_t.joinable()) _t.join();}
+    inline void join_if(bool s)
+    {if(_t.joinable() && s) _t.join();}
+    inline void detach()
+    {if(_t.joinable()) _t.detach();}
+    inline void detach_if(bool s)
+    {if(s) _t.detach();}
+
     void clear_close_f()
-    {context.end_list.clear();}
+    {context.get().end_list.clear();}
 
 private:
     std::thread _t;
-    thread_context context;
+    DHolder<thread_context> context;
 };
 
+/*
+ test block
+
+        DThreadHandler th;
+        th.set_close_f(func2);
+        th.set_close_f(f);
+        th.set_repeat(2);
+
+        th.set_start_sleep(2000);
+        th.set_midle_sleep(2000);
+        th.set_repeat_sleep(2000);
+        th.set_end_sleep(2000);
+
+        th.start(test, 123, 56.78);
+        th.join();
+ */
 //----------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------
 //----------------------------------------------------------------------------------------------
@@ -126,22 +153,29 @@ public:
     explicit DThreadMaster(int max_threads) : thread_box(max_threads) {}
     DThreadHandler* get_thread()
     {
-//        DBox<DThreadHandler>::item_holder ih = thread_box.pull();
-//        if(ih)
-//        {
-//            ih->clear_close_f();
-//            ih->set_close_f(*ih);
-//        }
-//        return ih;
+
+        auto h = thread_box.pull();
+        if(h)
+        {
+            h->clear_close_f();
+            h->set_close_f(*h);
+        }
+        return h;
     }
 
     void join_all()
     {
-//        for(int i=0;i!=thread_box.size();++i)
-//            thread_box[i].join_if();
+        for(int i=0;i!=thread_box.size();++i)
+            thread_box[i].join();
     }
 
 private:
-    DBox<DThreadHandler> thread_box;
+    struct wrap : public DThreadHandler
+    {
+        void operator()(){box->push(this);}
+    private:
+        DBox<wrap>* box;
+    };
+    DBox<wrap> thread_box;
 };
 #endif // DTHREADHANDLER_H

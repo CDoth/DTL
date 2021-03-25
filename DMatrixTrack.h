@@ -14,8 +14,11 @@ public:
     void make_forward_track(int w_in, int h_in, int kw, int kh, int pw, int ph, int sw, int sh);
     void make_back_track(int w_in, int h_in, int kw, int kh, int pw, int ph, int sw, int sh);
 
-    image_t image() const {return image;}
-    track_t track() const {return track;}
+    int out_w() const {return ow;}
+    int out_h() const {return oh;}
+
+    image_t image() const {return _image;}
+    track_t track() const {return _track;}
     int size() const {return _size;}
 private:
     void make_track(int w_in, int h_in, int kw, int kh, int pw, int ph, int sw, int sh, bool make_back);
@@ -23,26 +26,28 @@ private:
     track_t _track;
     int _size;
     T zero=0;
+    int ow;
+    int oh;
 };
 template <class T>
 void DMatrixTrack<T>::set_image(T* data, int size)
 {
-    cpy_mem(_image, data, size);
+    copy_mem(_image, data, size);
 }
 template <class T>
 void DMatrixTrack<T>::set_image(const DMatrix<T>& m)
 {
-    cpy_mem(_image, m.constBegin(), m.area());
+    copy_mem(_image, m.constBegin(), m.area());
 }
 template <class T>
 void DMatrixTrack<T>::make_forward_track(int w_in, int h_in, int kw, int kh, int pw, int ph, int sw, int sh)
 {
-    make_track(w_in, h_in, kw, kh, pw, ph, sw, sh, true);
+    make_track(w_in, h_in, kw, kh, pw, ph, sw, sh, false);
 }
 template <class T>
 void DMatrixTrack<T>::make_back_track(int w_in, int h_in, int kw, int kh, int pw, int ph, int sw, int sh)
 {
-    make_track(w_in, h_in, kw, kh, pw, ph, sw, sh, false);
+    make_track(w_in, h_in, kw, kh, pw, ph, sw, sh, true);
 }
 template <class T>
 void DMatrixTrack<T>::make_track(int w_in, int h_in, int kw, int kh, int pw, int ph, int sw, int sh, bool make_back)
@@ -60,12 +65,12 @@ void DMatrixTrack<T>::make_track(int w_in, int h_in, int kw, int kh, int pw, int
     int in_size = w_in*h_in;
     int out_size = w_out*h_out;
 
-    int image_size = b? in_size : out_size;
+    int image_size = b? out_size : in_size;
     int track_size = b? in_size*k_size : out_size*k_size;
     _size = track_size;
     reset_mem(_image, image_size);
     reset_mem(_track, track_size);
-    for(int i=0;i!=track_size;++i) _track[i] = zero;
+    for(int i=0;i!=track_size;++i) _track[i] = &zero;
 
     struct mpair{mpair(int _=0, int __=0) : w(_), h(__){} int w; int h;};
     mpair mul;
@@ -111,6 +116,9 @@ void DMatrixTrack<T>::make_track(int w_in, int h_in, int kw, int kh, int pw, int
         pad.h = -ph;
         pos.h = 0;
     }
+
+    ow = w_out;
+    oh = h_out;
 }
 //----------------------------------------------------------------------------------------------------------------------------------------
 template <class T>
@@ -134,8 +142,7 @@ void convolution(T** track, int track_size, const DMatrix<T>& kernel, DMatrix<T>
         {
             v += *kernel_it++ * **track_it++;
         }
-        *out_it += v;
-        out_it++;
+        *out_it++ += v;
     }
 }
 template <class T>
@@ -216,3 +223,44 @@ void DDuplexMatrixTrack<T>::bp(const DMatrix<T>& kernel, DMatrix<T>& in_error, c
     back_convolution(back_track.track(), back_track.size(), kernel, in_error, raw_in, kernel_delta);
 }
 #endif // DMATRIXTRACK_H
+
+/*
+ test block
+
+
+void set_rand(int& v)
+{
+    v = rand()%100;
+}
+void print_matrix(const DMatrix<int>& m, const char* message = nullptr)
+{
+    if(message) printf("%s:\n", message);
+    for(int i=0;i!=m.width();++i)
+    {
+        for(int j=0;j!=m.height();++j)
+            printf("%d ", m[i][j]);
+        printf("\n");
+    }
+    printf("\n");
+}
+
+
+    DMatrix<int> m(3,3);
+    DMatrix<int> k(2,2);
+    m.run(set_rand);
+    k.run(set_rand);
+
+    DMatrixTrack<int> track;
+    track.make_forward_track(m.width(), m.height(), k.width(), k.height(), 0,0,0,0);
+
+    DMatrix<int> out(2, 2);
+
+    track.set_image(m);
+    convolution(track.track(), track.size(), k, out);
+
+
+    print_matrix(m, "input");
+    print_matrix(k, "kernel");
+    print_matrix(out, "out");
+
+ */

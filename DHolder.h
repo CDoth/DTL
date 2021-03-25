@@ -1,10 +1,8 @@
 #ifndef DHOLDER_H
 #define DHOLDER_H
-#include <mutex>
-#include <QDebug>
 #include "dmem.h"
-
-
+#include "DWatcher.h"
+/*
 enum _dholder_modes { ShareNowMode = 0b00000101, ShareMode = 0b00000001, CloneMode = 0b00000010, ConstMode = 0b10000000, ConstShareMode = 0b10000001, ConstCloneMode = 0b10000010};
 static bool check_mode(uint8_t m1, uint8_t m2) {return m1 & m2;}
 
@@ -184,6 +182,103 @@ T& share(T& o)
     o.setAccessMode(ShareNowMode);
     return o;
 }
+*/
 
+template <class T>
+class DHolder
+{
+public:
+    DHolder()
+    {
+        w = new DDualWatcher(new T, CloneWatcher);
+    }
+    DHolder(const T& t)
+    {
+        w = new DDualWatcher(new T(t), CloneWatcher);
+    }
+    DHolder(const DHolder<T>& h)
+    {
+        w = h.w;
+        w->refUp();
+    }
+    DHolder<T>& operator=(const DHolder<T>& h)
+    {
+        if(w!=h.w)
+        {
+            DHolder<T> temp(h);
+            temp.swap(*this);
+        }
+        return *this;
+    }
+    ~DHolder()
+    {
+        if(w->pull() == 0) {delete data(); delete w;}
+    }
+    void setMode(WatcherMode m)
+    {
+        if(m != w->mode())
+        {
+            w->refDown();
+            w = w->otherSide();
+            if(w->otherSideRefs() == 0)
+                w->disconnect();
+            w->refUp();
+        }
+    }
+
+    void make_unique();
+    bool is_unique() const;
+    void swap(DHolder<T>& with) {std::swap(w, with.w);}
+    T& get() {detach(); return *data();}
+    const T& constGet() const {return *data();}
+
+    T* ptr() {detach(); return data();}
+    const T* constPtr() const {return data();}
+
+    void replace(const T& t) {detach(); *data() = t;}
+private:
+    T* data() {return reinterpret_cast<T*>(w->d());}
+    const T* data() const {return reinterpret_cast<const T*>(w->d());}
+    T* clone()
+    {
+        return new T(*data());
+    }
+
+    void detach()
+    {
+        if(!w->is_unique())
+        {
+            if(w->is_share() && w->otherSideRefs())
+            {
+                w->disconnect(clone());
+            }
+            else if(w->is_clone())
+            {
+                w->refDown();
+                if(w->sideRefs() == 0) w->disconnect();
+                w = new DDualWatcher(clone(), CloneWatcher);
+            }
+        }
+    }
+
+    DDualWatcher* w;
+};
+
+/*
+ test block
+//    A a(345);
+//    {
+
+//        DHolder<A> h(a);
+//        DHolder<A> h2 = h;
+//        h.setMode(ShareWatcher);
+////        h2.setMode(ShareWatcher);
+//        h.get().v = 10001;
+//        printf("h v: %d\n", h.get().v);
+//        printf("h2 v: %d\n", h2.get().v);
+
+
+//    }
+ */
 #endif // DHOLDER_H
 

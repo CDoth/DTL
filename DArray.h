@@ -36,7 +36,7 @@ public:
         Data* d = new Data(sizeof(stored_type));
         w = new DDualWatcher(d, CloneWatcher);
     }
-    DArray(int s)
+    explicit DArray(int s)
     {
         Data* d = new Data(sizeof(stored_type));
         w = new DDualWatcher(d, CloneWatcher);

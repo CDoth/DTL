@@ -28,7 +28,7 @@ template <class T> T*   reget_mem(T* m, int s) {INC_REALLOCED(m); return reinter
 template <class T> void free_mem (T*&m) {if(m){DEC_ALLOCED; free(m); m = nullptr;}}
 template <class T> void zero_mem (T*m, int s) {if(m&&s) memset(m,0,range<T>(s));}
 template <class T> void clear_mem(T*m, int s) {zero_mem(m,s); free_mem(m);}
-template <class T> void copy_mem (T* _dst, T* _src, int s) {if(_dst&&_src&&s) memcpy(_dst, _src, range<T>(s));}
+template <class T> void copy_mem (T* _dst, const T* _src, int s) {if(_dst&&_src&&s) memcpy(_dst, _src, range<T>(s));}
 
 /*
  test block
