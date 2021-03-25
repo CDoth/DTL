@@ -166,7 +166,7 @@ struct SENDC
             if(i->packet) sb = t->unlocked_send_packet(i->data, i->size);
             else sb = t->unlocked_send_it(i->data, i->size);
 
-            printf(" -- SENC: sb: %d\n", sb);
+//            printf(" -- SENC: sb: %d\n", sb);
             if(sb == i->size) ++i;
             if(sb < 0) break;
         }

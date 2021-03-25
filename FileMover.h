@@ -100,7 +100,7 @@ public:
         string path;
         string name;
         string shortSize;
-        file_size_t size;
+        fsize_t size;
     };
     struct specific_data_send_handler
     {
@@ -871,8 +871,8 @@ public:
                                 current_recv_file->ri->read_for_packet += rb;
                                 current_recv_file->prc = 100.0 - ((double) current_recv_file->bytes_left * 100.0 / current_recv_file->f->size);
 
-//                                if(fm->show_progress)
-//                                std::cout << "recv progress: "<<current_recv_file->index << " " << current_recv_file->prc << " %" << std::endl;
+                                if(fm->show_progress)
+                                std::cout << "recv progress: "<<current_recv_file->index << " " << current_recv_file->prc << " %" << std::endl;
 
                                 current_recv_file->flush_now = current_recv_file->bytes_left < (size_t)fm->recv_buffer.size ?
                                                               current_recv_file->bytes_left : fm->recv_buffer.size;
@@ -890,8 +890,8 @@ public:
                                 gettimeofday(&end, nullptr);
 //                                timeval t = PROFILER::time_dif(&current_recv_file->start, &end);
 
-//                                std::cout << "recv file: " << current_recv_file->index << " " << current_recv_file->f->path <<
-//                                             "time: " << t.tv_sec << " sec " << t.tv_usec << " usec" << std::endl;
+                                std::cout << "recv file: " << current_recv_file->index << " " << current_recv_file->f->path <<
+                                             "time: " << t.tv_sec << " sec " << t.tv_usec << " usec" << std::endl;
 
                                 fclose(current_recv_file->f->file);
                                 fm->recv_map.erase(fm->recv_map.find(current_recv_file->index));
@@ -931,7 +931,7 @@ public:
                             sc.add_item({&h->index, INDEX_LEN, false});
                             sc.add_item({&h->f->size, FILE_SIZE_LEN, false});
                             sc.add_item({&h->flush_now, FILE_SIZE_LEN, false}); //packet size
-                            sc.add_item({h->f->name.c_str(), static_cast<uint32_t>h->f->name.size(), true});
+                            sc.add_item({h->f->name.c_str(), static_cast<int>(h->f->name.size()), true});
                             sc.complete();
                         }
                         if(sc.unlocked_send_all())
@@ -953,12 +953,9 @@ public:
                             sc.add_item({&h->index, INDEX_LEN});
                             sc.add_item({&h->shift, FILE_SIZE_LEN});
                             sc.complete();
-
-                            printf("Prepare FileRequest: %d %d FILE_SIZE_LEN: %d\n", h->index, h->shift, FILE_SIZE_LEN);
                         }
                         if(sc.unlocked_send_all())
                         {
-                            printf("Sent FileRequest\n");
                             fm->specific_queue.pop();
                             free_mem(current_spec);
                             current_spec = nullptr;
@@ -972,7 +969,7 @@ public:
                             message_data* md = (message_data*)current_spec->data;
                             sc.add_item({&nd_byte, PREFIX_LEN, false});
                             sc.add_item({&current_spec->type, HEADER_LEN, false});
-                            sc.add_item({fm->message_buffer.data + md->begin, static_cast<uint32_t>md->size, true});
+                            sc.add_item({fm->message_buffer.data + md->begin, static_cast<int>(md->size), true});
                             sc.complete();
                         }
                         if(sc.unlocked_send_all())
@@ -1113,7 +1110,6 @@ public:
                                     current_send_file->si->interuptable = true;
                                     current_send_file->prc = 100.0 - ((double) current_send_file->bytes_left * 100.0 / current_send_file->f->size);
 
-//                                    _debug << " -- next:"<<current_send_file->next << " -- prev:"<<current_send_file->prev<<" -- current:"<<current_send_file;
                                     if(fm->show_progress)
                                     std::cout << "send progress: " << current_send_file->index << " " << current_send_file->prc << " %" <<std::endl;
 
@@ -1129,8 +1125,8 @@ public:
                                     gettimeofday(&end, nullptr);
 //                                    timeval t = PROFILER::time_dif(&current_send_file->start, &end);
 
-//                                    std::cout << "sent file: " << current_send_file->index << " time: " << t.tv_sec << " sec " << t.tv_usec
-//                                              << "usec" << std::endl;
+                                    std::cout << "sent file: " << current_send_file->index << " time: " << t.tv_sec << " sec " << t.tv_usec
+                                              << "usec" << std::endl;
 
                                     fclose(current_send_file->f->file);
                                     delete current_send_file->f;
