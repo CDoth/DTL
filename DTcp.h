@@ -90,6 +90,7 @@ private:
     int    __listen(SOCKET s, int backlog);
     int    __connect(SOCKET s, const sockaddr* name, int namelen);
     int    __shutdown(SOCKET s, int how);
+    int    __select(fd_set* read_set, fd_set* write_set, fd_set* err_set, struct timeval* tv);
 private:
     SOCKET _socket_in;
     SOCKET _socket_out;
@@ -164,6 +165,8 @@ struct SENDC
         {
             if(i->packet) sb = t->unlocked_send_packet(i->data, i->size);
             else sb = t->unlocked_send_it(i->data, i->size);
+
+            printf(" -- SENC: sb: %d\n", sb);
             if(sb == i->size) ++i;
             if(sb < 0) break;
         }

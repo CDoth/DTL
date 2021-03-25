@@ -14,7 +14,7 @@
 #include "QDebug"
 #define _debug qDebug()
 #else
-#define debug std::cout
+#define _debug std::cout
 #endif
 
 #define FM_DEFAULT_RECV_BUFFER_SIZE 1024 * 1024 * 4
@@ -41,6 +41,15 @@ enum header_type
     AttachRequest = 2042,
 };
 
+typedef uint64_t fsize_t;
+typedef uint32_t index_t;
+typedef uint32_t prefix_t;
+
+enum FM_SIZE {FILE_SIZE_LEN = sizeof(fsize_t),
+              INDEX_LEN = sizeof(index_t),
+              PREFIX_LEN = sizeof(prefix_t),
+              HEADER_LEN = sizeof(header_type)};
+
 
 class FileMover
 {
@@ -55,13 +64,10 @@ public:
         string_buffer.resize(FM_DEFAULT_STRING_BUFFER_SIZE);
     }
     typedef std::string string;
-    typedef uint64_t file_size_t;
 
-    typedef int index_t;
 
-    typedef uint32_t string_size;
-    typedef uint32_t WORD;
-    typedef uint64_t DWORD;
+
+
 //private:
 public:
     DirReader dir;
@@ -697,9 +703,9 @@ public:
                                 new_file = fm->get_file_handler();
                                 new_file->ri = fm->get_recv_info();
                                 new_file->f = new file_info;
-                                rc.add_item({&new_file->index, sizeof(index_t)});
-                                rc.add_item({&new_file->f->size, sizeof(file_size_t)});
-                                rc.add_item({&new_file->ri->packet_size, sizeof(int)});
+                                rc.add_item({&new_file->index, INDEX_LEN});
+                                rc.add_item({&new_file->f->size, FILE_SIZE_LEN});
+                                rc.add_item({&new_file->ri->packet_size, FILE_SIZE_LEN});
                                 zero_mem(fm->string_buffer.data, fm->string_buffer.size);
                                 rc.add_item({fm->string_buffer.data, 0, true});
                                 rc.complete();
@@ -729,8 +735,8 @@ public:
                         }
                         case File:
                         {
-                            rb = fm->control.unlocked_recv_to(&index, sizeof(index_t));
-                            if(rb == sizeof(index_t))
+                            rb = fm->control.unlocked_recv_to(&index, INDEX_LEN);
+                            if(rb == INDEX_LEN)
                             {
                                 file_handler* h = fm->recv_map[index];
                                 gettimeofday(&h->start, nullptr);
@@ -753,8 +759,8 @@ public:
                         {
                             if(rc.empty())
                             {
-                                rc.add_item({&recv_index, sizeof(index_t)});
-                                rc.add_item({&recv_shift, sizeof(size_t)});
+                                rc.add_item({&recv_index, INDEX_LEN});
+                                rc.add_item({&recv_shift, FILE_SIZE_LEN});
                                 rc.complete();
                             }
                             if(rc.unlocked_recv_all())
@@ -806,9 +812,9 @@ public:
                         {
                             if(rc.empty())
                             {
-                                rc.add_item({&recv_size, sizeof(int)});
-                                rc.add_item({&recv_index, sizeof(index_t)});
-                                rc.add_item({&recv_shift, sizeof(size_t)});
+                                rc.add_item({&recv_size, sizeof(uint32_t)});
+                                rc.add_item({&recv_index, INDEX_LEN});
+                                rc.add_item({&recv_shift, FILE_SIZE_LEN});
                                 rc.add_script(2,1,&recv_size,true);
                                 rc.complete();
                             }
@@ -835,8 +841,8 @@ public:
                         {
                             if(rc.empty())
                             {
-                                rc.add_item({&recv_index, sizeof(index_t)});
-                                rc.add_item({&recv_shift, sizeof(size_t)});
+                                rc.add_item({&recv_index, INDEX_LEN});
+                                rc.add_item({&recv_shift,FILE_SIZE_LEN});
                                 rc.complete();
                             }
                             if(rc.unlocked_recv_all())
@@ -900,16 +906,15 @@ public:
                 }
                 else
                 {
-                    rb = fm->control.unlocked_recv_to(&data_index, sizeof(index_t));
+                    rb = fm->control.unlocked_recv_to(&data_index,PREFIX_LEN);
                     if(rb < 0) break;
-                    if(rb < (int)sizeof(index_t)) data_index = 0;
                 }
             }
             if(fm->control.check_writability(0,3000))
             {
                 if(!fm->connection_status)
                 {
-                    while( (sb = fm->control.send_it(&ds_byte, 1)) <= 0 );
+                    while( (sb = fm->control.send_it(&ds_byte, PREFIX_LEN)) <= 0 );
                 }
                 if(  ((current_send_file && current_send_file->si->interuptable) || !current_send_file)  &&  fm->specific_queue.size())
                 {
@@ -921,12 +926,12 @@ public:
                         if(sc.empty())
                         {
                             file_handler* h = (file_handler*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t), false});
-                            sc.add_item({&current_spec->type, sizeof(header_type), false});
-                            sc.add_item({&h->index, sizeof(index_t), false});
-                            sc.add_item({&h->f->size, sizeof(file_size_t), false});
-                            sc.add_item({&h->flush_now, sizeof(int), false});
-                            sc.add_item({h->f->name.c_str(), (int)h->f->name.size(), true});
+                            sc.add_item({&nd_byte, PREFIX_LEN, false});
+                            sc.add_item({&current_spec->type, HEADER_LEN, false});
+                            sc.add_item({&h->index, INDEX_LEN, false});
+                            sc.add_item({&h->f->size, FILE_SIZE_LEN, false});
+                            sc.add_item({&h->flush_now, FILE_SIZE_LEN, false}); //packet size
+                            sc.add_item({h->f->name.c_str(), static_cast<uint32_t>h->f->name.size(), true});
                             sc.complete();
                         }
                         if(sc.unlocked_send_all())
@@ -943,14 +948,17 @@ public:
                         if(sc.empty())
                         {
                             file_handler* h = (file_handler*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t)});
-                            sc.add_item({&current_spec->type, sizeof(header_type)});
-                            sc.add_item({&h->index, sizeof(index_t)});
-                            sc.add_item({&h->shift, sizeof(size_t)});
+                            sc.add_item({&nd_byte, PREFIX_LEN});
+                            sc.add_item({&current_spec->type, HEADER_LEN});
+                            sc.add_item({&h->index, INDEX_LEN});
+                            sc.add_item({&h->shift, FILE_SIZE_LEN});
                             sc.complete();
+
+                            printf("Prepare FileRequest: %d %d FILE_SIZE_LEN: %d\n", h->index, h->shift, FILE_SIZE_LEN);
                         }
                         if(sc.unlocked_send_all())
                         {
+                            printf("Sent FileRequest\n");
                             fm->specific_queue.pop();
                             free_mem(current_spec);
                             current_spec = nullptr;
@@ -962,9 +970,9 @@ public:
                         if(sc.empty())
                         {
                             message_data* md = (message_data*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t), false});
-                            sc.add_item({&current_spec->type, sizeof(header_type), false});
-                            sc.add_item({fm->message_buffer.data + md->begin, md->size, true});
+                            sc.add_item({&nd_byte, PREFIX_LEN, false});
+                            sc.add_item({&current_spec->type, HEADER_LEN, false});
+                            sc.add_item({fm->message_buffer.data + md->begin, static_cast<uint32_t>md->size, true});
                             sc.complete();
                         }
                         if(sc.unlocked_send_all())
@@ -981,16 +989,16 @@ public:
                         if(sc.empty())
                         {
                             file_handler* h = (file_handler*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t), false});
-                            sc.add_item({&current_spec->type, sizeof(header_type), false});
+                            sc.add_item({&nd_byte, PREFIX_LEN, false});
+                            sc.add_item({&current_spec->type, HEADER_LEN, false});
 
                             send_size = -1;
-                            sc.add_item({&send_size, sizeof(int)});
+                            sc.add_item({&send_size, sizeof(uint32_t)});
                             while(h)
                             {
                                 ++send_size;
-                                sc.add_item({&h->index, sizeof(index_t)});
-                                sc.add_item({&h->shift, sizeof(size_t)});
+                                sc.add_item({&h->index, INDEX_LEN});
+                                sc.add_item({&h->shift, FILE_SIZE_LEN});
                                 h = h->next;
                             }
                             sc.complete();
@@ -1010,10 +1018,10 @@ public:
                         if(sc.empty())
                         {
                             file_handler* h = (file_handler*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t)});
-                            sc.add_item({&current_spec->type, sizeof(header_type)});
-                            sc.add_item({&h->index, sizeof(index_t)});
-                            sc.add_item({&h->shift, sizeof(size_t)});
+                            sc.add_item({&nd_byte, PREFIX_LEN});
+                            sc.add_item({&current_spec->type, HEADER_LEN});
+                            sc.add_item({&h->index, INDEX_LEN});
+                            sc.add_item({&h->shift, FILE_SIZE_LEN});
                             sc.complete();
                         }
                         if(sc.unlocked_send_all())
@@ -1029,16 +1037,16 @@ public:
                         if(sc.empty())
                         {
                             file_handler* h = (file_handler*)current_spec->data;
-                            sc.add_item({&nd_byte, sizeof(index_t), false});
-                            sc.add_item({&current_spec->type, sizeof(header_type), false});
+                            sc.add_item({&nd_byte, PREFIX_LEN, false});
+                            sc.add_item({&current_spec->type, HEADER_LEN, false});
 
                             send_size = -1;
-                            sc.add_item({&send_size, sizeof(int)});
+                            sc.add_item({&send_size, sizeof(uint32_t)});
                             while(h)
                             {
                                 ++send_size;
-                                sc.add_item({&h->index, sizeof(index_t)});
-                                sc.add_item({&h->shift, sizeof(size_t)});
+                                sc.add_item({&h->index, INDEX_LEN});
+                                sc.add_item({&h->shift, FILE_SIZE_LEN});
                                 h = h->next;
                             }
                             sc.complete();
@@ -1066,9 +1074,9 @@ public:
                     {
                         current_send_file->si->interuptable = false;
                         current_send_file->si->initial_sent = false;
-                        sc.add_item({&nd_byte, sizeof(index_t), false});
-                        sc.add_item({&ft, sizeof(header_type), false});
-                        sc.add_item({&current_send_file->index, sizeof(index_t), false});
+                        sc.add_item({&nd_byte, PREFIX_LEN, false});
+                        sc.add_item({&ft, HEADER_LEN, false});
+                        sc.add_item({&current_send_file->index, INDEX_LEN, false});
                         current_send_file->prc = 0.0;
                         current_send_file->si->pack_sent = 0;
                         fseek(current_send_file->f->file, current_send_file->shift, SEEK_SET);
@@ -1086,7 +1094,7 @@ public:
                     }
                     if( current_send_file->si->initial_sent )
                     {
-                        if(!file_byte_sent) file_byte_sent = fm->control.send_it(&current_send_file->index, sizeof(index_t));
+                        if(!file_byte_sent) file_byte_sent = fm->control.send_it(&current_send_file->index, INDEX_LEN);
                         if(file_byte_sent == sizeof(index_t))
                         {
                             if(current_send_file->si->interuptable)
@@ -1693,7 +1701,6 @@ public:
         //-----------------------------------
         if(lex.base_equal(l, "get"))
         {
-//            qDebug() << "COMMAND: GET";
             if(lex.lex(l.end,nullptr, "<=all>").begin)
                 push_all(path.begin);
 
@@ -1703,17 +1710,14 @@ public:
         }
         if(lex.base_equal(l, "getp"))
         {
-//            qDebug() << "COMMAND: GETP";
             push_multi_files_request(merge_handlers(list), path.begin);
         }
         if(lex.base_equal(l, "attach"))
         {
-//            qDebug() << "COMMAND: ATTACH";
             push_attach_request(merge_handlers(list), path.begin);
         }
         if(lex.base_equal(l, "force"))
         {
-//            qDebug() << "COMMAND: FORCE";
             int index = lex.number(l.end,nullptr);
 
             push_force_request(recv_handler(index),path.begin);
@@ -1721,7 +1725,6 @@ public:
         //-------------------------------------
         if(lex.base_equal(l, "plan"))
         {
-//            qDebug() << "COMMAND: PLAN";
             if(lex.lex(l.end, nullptr, "<=to>").begin)
             {
                 int to = list.front();
@@ -1736,7 +1739,6 @@ public:
         }
         if(lex.base_equal(l, "planp"))
         {
-//            qDebug() << "COMMAND: PLANP";
             if(!list.empty())
             {
                 plan_file(recv_handler(list.front()), path.begin);
@@ -1747,13 +1749,11 @@ public:
         }
         if(lex.base_equal(l, "planr"))
         {
-//            qDebug() << "COMMAND: PLANR";
             for(int i=0;i!=list.size();++i)
                 recv_plan.pull(recv_handler(list[i]));
         }
         if(lex.base_equal(l, "show"))
         {
-//            qDebug() << "COMMAND: SHOW";
             if(lex.lex(l.end, nullptr, "<=plan>").begin)
             {
                 print_plan();
@@ -1775,7 +1775,6 @@ public:
         }
         if(lex.base_equal(l, "m"))
         {
-//            qDebug() << "COMMAND: M";
 
             const char* mes = lex.lex(l.end, nullptr, "<$min:1>").begin;
             if(mes)

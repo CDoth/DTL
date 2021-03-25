@@ -315,6 +315,26 @@ int DTcp::__shutdown(SOCKET s, int how)
 
     return 0;
 }
+int DTcp::__select(fd_set* read_set, fd_set* write_set, fd_set* err_set, struct timeval* tv)
+{
+    if(!is_valid_socket(_socket_out))
+    {
+        FUNC_ERROR("wrong socket", _socket_out);
+        return SOCKET_ERROR;
+    }
+#ifdef _WIN32
+    int r = select(0, read_set, write_set, err_set, tv);
+#else
+    int r = select(_socket_out+1, read_set, write_set, err_set, tv);
+#endif
+    if(r == SOCKET_ERROR)
+    {
+        FUNC_ERROR("select() fault", WSAE);
+        return SOCKET_ERROR;
+    }
+    return r;
+}
+
 //---------------------------------------------------------------------------------------
 DTcp::DTcp()
 {
@@ -430,15 +450,9 @@ int DTcp::check_readability(int sec, int usec)
 
     FD_ZERO(&fdread);
     FD_SET(_socket_out, &fdread);
-    if( (r_select = select(0, &fdread, nullptr, nullptr, &timeout) ) == SOCKET_ERROR )
+    if( __select(&fdread, nullptr, nullptr, &timeout)  > 0)
     {
-        FUNC_ERROR("select() fault", WSAE);
-        return 0;
-    }
-    else
-    {
-        if(r_select > 0)
-            return FD_ISSET(_socket_out, &fdread);
+        return FD_ISSET(_socket_out, &fdread);
     }
 
     return 0;
@@ -459,15 +473,9 @@ int DTcp::check_writability(int sec, int usec)
 
     FD_ZERO(&fdwrite);
     FD_SET(_socket_out, &fdwrite);
-    if( (r_select = select(0, nullptr, &fdwrite, nullptr, &timeout) ) == SOCKET_ERROR )
+    if( __select(nullptr, &fdwrite, nullptr, &timeout)  > 0)
     {
-        FUNC_ERROR("select() fault", WSAE);
-        return 0;
-    }
-    else
-    {
-        if(r_select > 0)
-            return FD_ISSET(_socket_out, &fdwrite);
+        return FD_ISSET(_socket_out, &fdwrite);
     }
 
     return 0;
