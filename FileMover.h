@@ -125,7 +125,7 @@ public:
     {
         file_info* f;
         index_t index;
-        size_t shift;
+        fsize_t shift;
         file_handler* next;
         file_handler* prev;
 
@@ -198,6 +198,14 @@ public:
                 disconnect_handler(h);
             }
         }
+        void remove_head(file_handler* h)
+        {
+            for(int i=0;i!=list.size();++i)
+            {
+                if(h == list[i]) list.remove(h), --i;
+            }
+        }
+
         void attach(file_handler* h, file_handler* to)
         {
             if(!h) {_debug << "file_multi_queue::attach() : bad pointer to file handler 1"; return;}
@@ -442,6 +450,8 @@ public:
     void push_multi_files_request(file_handler* h, const char* path)
     {
         if(!h) { _debug << "push_multi_files_request: bad recv handler"; return; }
+
+        std::cout << "push_multi_files_request: " << " next: " << h->next << std::endl;
         if(!h->next)
         {
             push_file_request(h, path);
@@ -451,7 +461,7 @@ public:
         while(_h)
         {
             set_recv_path(_h, path);
-            recv_plan.pull(_h);
+            recv_plan.remove_head(_h);
             _h = _h->next;
         }
         specific_data_send_handler* sh;
@@ -866,13 +876,18 @@ public:
                         if(rb == current_recv_file->flush_now)
                         {
                             fwrite(fm->recv_buffer.data, rb, 1, current_recv_file->f->file);
+                            fflush(current_recv_file->f->file);
                             if( current_recv_file->bytes_left -= rb )
                             {
                                 current_recv_file->ri->read_for_packet += rb;
                                 current_recv_file->prc = 100.0 - ((double) current_recv_file->bytes_left * 100.0 / current_recv_file->f->size);
 
-                                if(fm->show_progress)
-                                std::cout << "recv progress: "<<current_recv_file->index << " " << current_recv_file->prc << " %" << std::endl;
+//                                if(fm->show_progress)
+//                                std::cout << "recv progress: "<<current_recv_file->index <<
+//                                             " " << current_recv_file->prc << " %" <<
+//                                             " file size: " << current_recv_file->f->size <<
+//                                             " rb: "<< rb <<
+//                                             " bytes left: " <<  current_recv_file->bytes_left << std::endl;
 
                                 current_recv_file->flush_now = current_recv_file->bytes_left < (size_t)fm->recv_buffer.size ?
                                                               current_recv_file->bytes_left : fm->recv_buffer.size;
@@ -888,7 +903,7 @@ public:
 
                                 timeval end;
                                 gettimeofday(&end, nullptr);
-//                                timeval t = PROFILER::time_dif(&current_recv_file->start, &end);
+                                timeval t = PROFILER::time_dif(&current_recv_file->start, &end);
 
                                 std::cout << "recv file: " << current_recv_file->index << " " << current_recv_file->f->path <<
                                              "time: " << t.tv_sec << " sec " << t.tv_usec << " usec" << std::endl;
@@ -996,6 +1011,9 @@ public:
                                 ++send_size;
                                 sc.add_item({&h->index, INDEX_LEN});
                                 sc.add_item({&h->shift, FILE_SIZE_LEN});
+
+                                std::cout << "MultiFilesRequest: index: "<< h->index << " shift: " << h->shift <<std::endl;
+//                                printf("MultiFilesRequest: index: %d shift: %ull\n", h->index, h->shift);
                                 h = h->next;
                             }
                             sc.complete();
@@ -1123,7 +1141,7 @@ public:
                                 {
                                     timeval end;
                                     gettimeofday(&end, nullptr);
-//                                    timeval t = PROFILER::time_dif(&current_send_file->start, &end);
+                                    timeval t = PROFILER::time_dif(&current_send_file->start, &end);
 
                                     std::cout << "sent file: " << current_send_file->index << " time: " << t.tv_sec << " sec " << t.tv_usec
                                               << "usec" << std::endl;
@@ -1652,10 +1670,6 @@ public:
         options = lex.options(l.end, nullptr);
         auto path = lex.lex(l.end,nullptr, "</ | \\> <$min:2>");
         show_progress = true;
-//        std::cout << "list size: " << list.size() << " trcm base lexeme: ";
-//        lex.print_lexeme(l);
-//        std::cout << "path: ";
-//        lex.print_lexeme(path);
 
 
         if(lex.base_equal(l, "dir"))
@@ -1792,6 +1806,90 @@ public:
             trcm("load G:/DH/t1.txt");
             trcm("load G:/DH/ost.zip");
             trcm("load G:/DH/pic_car.jpg");
+        }
+        if(lex.base_equal(l, "help"))
+        {
+            std::cout << "File Mover help:" << std::endl;
+            std::cout << "Use <dir> to mannage direcoties:" << std::endl;
+            std::cout << "      dir open <path>: add directory with <path>" << std::endl;
+            std::cout << "      dir choose <index>: make directory with <index> current" << std::endl;
+            std::cout << "      dir list: print directories list" << std::endl;
+            std::cout << "      dir loadf <index>: load file with <index> from current directory" << std::endl;
+            std::cout << "      dir print <index>: show content of directory with <index>" << std::endl;
+            std::cout << "      dir printc: show content of current directory" << std::endl;
+
+            std::cout<<std::endl;
+
+            std::cout << "Use <get> to get files: ( <path> is unnecceary if default path seted )" << std::endl;
+            std::cout << "      get <index> <path>: get file with <index> to <path>" << std::endl;
+            std::cout << "      get <index1>, <index2>,...,<indexN> <path>: get files with <index1>-<indexN> (one by one) to <path>" << std::endl;
+            std::cout << "      get all <path>: get all files (one by one) to <path>" << std::endl;
+            std::cout << "      get plan <path>: get all files by plan to <path>" << std::endl;
+
+            std::cout<<std::endl;
+
+            std::cout << "Use <getp> to get files in paralell mode: ( <path> is unnecceary if default path seted )" << std::endl;
+            std::cout << "      getp <index1>,<index2>,...,<indexN> <path>:get files with <index1>-<indexN> (paralell) to <path>" << std::endl;
+
+            std::cout<<std::endl;
+
+            std::cout << "Use <attach> to get files in paralell mode with current downloading process: "
+                         "( <path> is unnecceary if default path seted )" << std::endl;
+            std::cout << "      attach <index1>,<index2>,...,<indexN> <path>: "
+                         "get files with <index1>-<indexN> (paralell with current process) to <path>" << std::endl;
+
+            std::cout<<std::endl;
+
+
+            std::cout << "Use <force> to get file instead of current process: " << std::endl;
+            std::cout << "      force <index> <path>: force file with <index> (instead of current process) to <path>" << std::endl;
+
+            std::cout<<std::endl;
+
+            std::cout << "Use <plan> to plan future download process: " << std::endl;
+            std::cout << "      plan <index> <path>: plan file with <index> to <path>" << std::endl;
+            std::cout << "      plan <index1>,<index2>,...,<indexN> <path>: "
+                         "plan files with <index1>-<indexN> (one by one) to <path>" << std::endl;
+            std::cout << "      plan to <indexTO> <index1>,<index2>,...,<indexN> <path>:"
+                         " plan files with <index1>,<index2>,...,<indexN> for paralell download with file with <indexTO> "
+                         "to <path>" << std::endl;
+            std::cout << "      planp <index1>,<index2>,...,<indexN> <path>: "
+                         "plan files with  <index1>-<indexN> (paralell mode) to <path>" << std::endl;
+            std::cout << "      planr <index1>,<index2>,...,<indexN>: "
+                         "remove files with <index1>-<indexN>  by plan" << std::endl;
+
+            std::cout<<std::endl;
+
+            std::cout << "Use <show> to print some info: " << std::endl;
+            std::cout << "      show otable: print out download table" << std::endl;
+            std::cout << "      show ltable: print local download table" << std::endl;
+            std::cout << "      show plan: print plan" << std::endl;
+
+            std::cout<<std::endl;
+
+            std::cout << "Use <load> to load file: " << std::endl;
+            std::cout << "      load <path>: load file by <path> " << std::endl;
+
+            std::cout<<std::endl;
+
+            std::cout << "Use <m> to send message: " << std::endl;
+            std::cout << "      m <message>: send <message> " << std::endl;
+
+            std::cout<<std::endl;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         }
         for(int i=0;i!=options.size();++i)
         {
