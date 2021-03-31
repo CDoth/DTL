@@ -165,8 +165,8 @@ public:
 
     void join_all()
     {
-        for(int i=0;i!=thread_box.size();++i)
-            thread_box[i].join();
+//        for(int i=0;i!=thread_box.size();++i)
+//            thread_box[i].join();
     }
 
 private:

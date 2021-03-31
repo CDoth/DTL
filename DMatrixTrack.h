@@ -182,7 +182,7 @@ template <class T>
 class DDuplexMatrixTrack
 {
 public:
-    DDuplexMatrixTrack();
+    DDuplexMatrixTrack() {}
     void make_forward_track(int w_in, int h_in, int kw, int kh, int pw, int ph, int sw, int sh);
     void make_back_track(int w_in, int h_in, int kw, int kh, int pw, int ph, int sw, int sh);
 

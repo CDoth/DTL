@@ -223,11 +223,7 @@ public:
         detach();
         auto b = begin();
         auto e = end();
-        int i=0;
-        while( b != e )
-        {
-            if( *b++ == v ) _remove(i, __metatype()); ++i;
-        }
+        while( b != e ) if( *b == v ) _remove(b, __metatype()); else ++b;
     }
     T& at(int i) {detach(); if(i >= 0 && i < data()->size) return _get_ref(i);}
     T& operator[](int i) {detach(); return _get_ref(i);}
@@ -241,7 +237,13 @@ public:
     void replace(int i, const T& v) {if(i >= 0 && i < data()->size) {detach(); _get_ref(i) = v;}}
     void swap(DArray& with){std::swap(w, with.w);}
     void insert(const T& v, int pos) {detach(); _insert(v, pos);}
-
+    void fill(const T& v)
+    {
+        detach();
+        auto b = begin();
+        auto e = end();
+        while( b != e ) *b++ = v;
+    }
     void element_swap(int first, int second)
     {
         std::swap( *(data()->t() + first ), *(data()->t() + second) );

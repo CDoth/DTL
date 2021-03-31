@@ -4,7 +4,7 @@
 #include <QImage>
 
 
-template <class T, int qv>
+template <class T, int qv = 1>
 class DRgbImage
 {
 public:
@@ -88,9 +88,9 @@ DRgbImage<T,qv>::DRgbImage(const char* path, int w, int h)
     {
         for(int j=0;j!=_height;++j)
         {
-            _red[i][j] = QColor(qimage.pixel(i,j)).red() / qvalue;
-            _green[i][j] = QColor(qimage.pixel(i,j)).green() / qvalue;
-            _blue[i][j] = QColor(qimage.pixel(i,j)).blue() / qvalue;
+            _red[i][j] = static_cast<value_type>(QColor(qimage.pixel(i,j)).red()) / static_cast<value_type>(qvalue);
+            _green[i][j] = static_cast<value_type>(QColor(qimage.pixel(i,j)).green()) / static_cast<value_type>(qvalue);
+            _blue[i][j] = static_cast<value_type>(QColor(qimage.pixel(i,j)).blue()) / static_cast<value_type>(qvalue);
         }
     }
 }
