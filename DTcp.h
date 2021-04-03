@@ -45,14 +45,15 @@ public:
 
     DTcp();
 
-    void unblock_in();
-    void unblock_out();
+    void unblock();
 
     int make_server(int port, const char* address  = nullptr);
     int make_client(int port, const char* address  = nullptr);
 
     int wait_connection();
     int try_connect();
+    int wait_connection(int port, const char* address  = nullptr);
+    int try_connect(int port, const char* address  = nullptr);
 
     int send_it(const void* data, int len, int flag = 0);
     int unlocked_send_it(const void* data, int len, int flag = 0);
@@ -70,13 +71,11 @@ public:
 
     int check_readability(int sec = 0, int usec = 0);
     int check_writability(int sec = 0, int usec = 0);
-    int stop_in();
-    int stop_out();
+    int stop();
 private:
 
 
-    int set_in(const int& port, const char* address  = nullptr);
-    int set_out(const int& port, const char* address = nullptr);
+    int set_stat(int port, const char* address = nullptr);
 
     static void local_error(const char* message, int error_code = 0);
     static void func_error(const char* func_name, const char* message, int error_code = 0);
@@ -92,11 +91,9 @@ private:
     int    __shutdown(SOCKET s, int how);
     int    __select(fd_set* read_set, fd_set* write_set, fd_set* err_set, struct timeval* tv);
 private:
-    SOCKET _socket_in;
-    SOCKET _socket_out;
+    SOCKET _socket;
 
-    sockaddr_in _addr_inner;
-    sockaddr_in _addr_outer;
+    sockaddr_in _addr;
 
     state _me;
 

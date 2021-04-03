@@ -656,17 +656,12 @@ public:
 
         file_handler* ms_handler = nullptr;
 
+        int check = 0;
         //----recv
         index_t data_index = 0;
         int rb = 0;
         header_type rtype = NoType;
         DArray<index_t> files;
-
-        int ms_files = 0;
-        int ms_size = 0;
-        int table_size = 0;
-        int table_item_packet = 0;
-        int table_packets_recv = 0;
         int packet_size = 0;
         int index = 0;
 
@@ -694,7 +689,7 @@ public:
         while(true)
         {
             if(!fm->connection_status) break;
-            if(fm->control.check_readability(0,3000))
+            if( ( check = fm->control.check_readability(0,3000)) > 0)
             {
                 if(data_index)
                 {
@@ -925,7 +920,8 @@ public:
                     if(rb < 0) break;
                 }
             }
-            if(fm->control.check_writability(0,3000))
+            else if(check<0) return;
+            if( ( check = fm->control.check_writability(0,3000)) > 0)
             {
                 if(!fm->connection_status)
                 {
@@ -1201,7 +1197,7 @@ public:
                         else current_send_file->si->interuptable = true;
                     }
                 }
-            }
+            } else if(check<0) break;
 
             if(data_index == FM_DISCONNECT_BYTE) break;
         }
@@ -1299,18 +1295,16 @@ public:
     }
     void open_connection(int port)
     {
-        control.make_server(port);
-        control.wait_connection();
-        control.unblock_out();
+        control.wait_connection(port);
+        control.unblock();
         connection_status = true;
         std::thread t(stream, this);
         t.detach();
     }
     void connect(int port, const char* address)
     {
-        control.make_client(port, address);
-        control.try_connect();
-        control.unblock_out();
+        control.try_connect(port, address);
+        control.unblock();
         connection_status = true;
         std::thread t(stream, this);
         t.detach();

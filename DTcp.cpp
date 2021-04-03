@@ -12,7 +12,7 @@ int DTcp::receive_to(void* data, int len, int flag)
     int rb = 0;
     do
     {
-        rb = recv(_socket_out, (char*)data + tb, len - tb, flag);
+        rb = recv(_socket, (char*)data + tb, len - tb, flag);
         if( rb > 0 ) tb += rb;
         else return rb;
 
@@ -22,7 +22,7 @@ int DTcp::receive_to(void* data, int len, int flag)
 int DTcp::send_it(const void* data, int len, int flag)
 {
     int sb = 0;
-    if(  (sb = send(_socket_out, (const char*)data, len, flag)) < 0)
+    if(  (sb = send(_socket, (const char*)data, len, flag)) < 0)
     {
     }
     return sb;
@@ -30,7 +30,7 @@ int DTcp::send_it(const void* data, int len, int flag)
 int DTcp::unlocked_recv_to(void* data, int len, int flag)
 {
     int rb = 0;
-    rb = recv(_socket_out, (char*)data + pr.total_rb, len - pr.total_rb, flag);
+    rb = recv(_socket, (char*)data + pr.total_rb, len - pr.total_rb, flag);
     if(rb >= 0) pr.total_rb += rb;
     else return rb;
     if(pr.total_rb == len) {int temp = pr.total_rb; pr.total_rb = 0; return temp;}
@@ -39,7 +39,7 @@ int DTcp::unlocked_recv_to(void* data, int len, int flag)
 int DTcp::unlocked_send_it(const void *data, int len, int flag)
 {
     int sb = 0;
-    sb = send(_socket_out, (const char*)data + ps.total_sb, len - ps.total_sb, flag);
+    sb = send(_socket, (const char*)data + ps.total_sb, len - ps.total_sb, flag);
 
     if(sb >= 0) ps.total_sb += sb;
     else return sb;
@@ -54,14 +54,14 @@ int DTcp::recv_packet(void* data, int flag1, int flag2)
     int packet_size = 0;
     do
     {
-        rb = recv(_socket_out, (char*)&packet_size + tb, sizeof(int) - tb, flag1);
+        rb = recv(_socket, (char*)&packet_size + tb, sizeof(int) - tb, flag1);
         if( rb > 0) tb += rb;
         else return tb;
     }while(tb < (int)sizeof(int));
     tb = 0;
     do
     {
-        rb = recv(_socket_out, d + tb, packet_size - tb, flag2);
+        rb = recv(_socket, d + tb, packet_size - tb, flag2);
         if( rb > 0) tb += rb;
         else return tb;
     }while(tb < packet_size);
@@ -88,7 +88,7 @@ int DTcp::unlocked_recv_packet(void* data, int* packet_size, int recv_lim, int f
     int rb = 0;
     if(pr.ps_rb < (int)sizeof(int))
     {
-        rb = recv(_socket_out, (char*)&pr.packet_size + pr.ps_rb, sizeof(int) - pr.ps_rb, flag1);
+        rb = recv(_socket, (char*)&pr.packet_size + pr.ps_rb, sizeof(int) - pr.ps_rb, flag1);
         if(rb > 0) pr.ps_rb += rb;
         else return 0;
         if(packet_size) *packet_size = pr.packet_size;
@@ -96,7 +96,7 @@ int DTcp::unlocked_recv_packet(void* data, int* packet_size, int recv_lim, int f
     int should_receive = recv_lim? recv_lim : pr.packet_size;
     if(pr.ps_rb >= (int)sizeof(int))
     {
-        rb = recv(_socket_out, (char*)data + pr.total_rb, should_receive - pr.total_rb, flag2);
+        rb = recv(_socket, (char*)data + pr.total_rb, should_receive - pr.total_rb, flag2);
         if(rb > 0) pr.total_rb += rb;
         else return pr.total_rb;
     }
@@ -115,13 +115,13 @@ int DTcp::unlocked_send_packet(const void* data, int len, int flag1, int flag2)
     int sb = 0;
     if(ps.ps_sb < (int)sizeof(int))
     {
-        sb = send(_socket_out, (const char*)&len, sizeof(int) - ps.ps_sb, flag1);
+        sb = send(_socket, (const char*)&len, sizeof(int) - ps.ps_sb, flag1);
         if(sb >= 0) ps.ps_sb += sb;
         else return sb;
     }
     if(ps.ps_sb >= (int)sizeof(int))
     {
-        sb = send(_socket_out, (const char*)data + ps.total_sb, len - ps.total_sb, flag2);
+        sb = send(_socket, (const char*)data + ps.total_sb, len - ps.total_sb, flag2);
         if(sb >= 0) ps.total_sb += sb;
         else return sb;
     }
@@ -135,46 +135,15 @@ int DTcp::unlocked_send_packet(const void* data, int len, int flag1, int flag2)
 }
 
 
-int DTcp::set_in(const int &port, const char *address)
+int DTcp::set_stat(int port, const char *address)
 {
     if(port >= 0 && port <= 65535)
     {
-        _addr_inner.sin_port = htons(port);
-
+        _addr.sin_port = htons(port);
 #ifdef _WIN32
-        if(address)
-            _addr_inner.sin_addr.S_un.S_addr = inet_addr(address);
-        else
-            _addr_inner.sin_addr.S_un.S_addr = htonl (INADDR_ANY);
+        _addr.sin_addr.S_un.S_addr = address ? inet_addr(address) : htonl(INADDR_ANY);
 #else
-        if(address)
-            _addr_inner.sin_addr.s_addr = inet_addr(address);
-        else
-            _addr_inner.sin_addr.s_addr = htonl (INADDR_ANY);
-#endif
-    }
-    else
-    {
-        FUNC_ERROR("invalid port number", port);
-        return -1;
-    }
-    return 0;
-}
-int DTcp::set_out(const int &port, const char *address)
-{
-    if(port >= 0 && port <= 65535)
-    {
-        _addr_outer.sin_port = htons(port);
-#ifdef _WIN32
-        if(address)
-            _addr_outer.sin_addr.S_un.S_addr = inet_addr(address);
-        else
-            _addr_outer.sin_addr.S_un.S_addr = htonl (INADDR_ANY);
-#else
-        if(address)
-            _addr_outer.sin_addr.s_addr = inet_addr(address);
-        else
-            _addr_outer.sin_addr.s_addr = htonl (INADDR_ANY);
+        _addr.sin_addr.s_addr = address ? inet_addr(address) : htonl(INADDR_ANY);
 #endif
     }
     else
@@ -317,15 +286,15 @@ int DTcp::__shutdown(SOCKET s, int how)
 }
 int DTcp::__select(fd_set* read_set, fd_set* write_set, fd_set* err_set, struct timeval* tv)
 {
-    if(!is_valid_socket(_socket_out))
+    if(!is_valid_socket(_socket))
     {
-        FUNC_ERROR("wrong socket", _socket_out);
+        FUNC_ERROR("wrong socket", _socket);
         return SOCKET_ERROR;
     }
 #ifdef _WIN32
     int r = select(0, read_set, write_set, err_set, tv);
 #else
-    int r = select(_socket_out+1, read_set, write_set, err_set, tv);
+    int r = select(_socket+1, read_set, write_set, err_set, tv);
 #endif
     if(r == SOCKET_ERROR)
     {
@@ -340,17 +309,13 @@ DTcp::DTcp()
 {
     _me = Default;
     #ifdef _WIN32
-    ZeroMemory(&_addr_inner,sizeof(sockaddr_in));
-    ZeroMemory(&_addr_outer,sizeof(sockaddr_in));
+    ZeroMemory(&_addr,sizeof(sockaddr_in));
     #else
     memset(&_addr_inner, 0, sizeof(sockaddr_in));
     memset(&_addr_outer, 0, sizeof(sockaddr_in));
     #endif
-    _addr_inner.sin_family = AF_INET;
-    _addr_outer.sin_family = AF_INET;
-
-    _socket_in = INVALID_SOCKET;
-    _socket_out = INVALID_SOCKET;
+    _addr.sin_family = AF_INET;
+    _socket = INVALID_SOCKET;
 
     pr.packet_size = 0;
     pr.total_rb = 0;
@@ -359,45 +324,30 @@ DTcp::DTcp()
     ps.total_sb = 0;
     ps.ps_sb = 0;
 }
-void DTcp::unblock_in()
+void DTcp::unblock()
 {
 #ifdef _WIN32
     BOOL l = TRUE;
-    ioctlsocket(_socket_in, FIONBIO, (unsigned long* ) &l);
+    ioctlsocket(_socket, FIONBIO, (unsigned long* ) &l);
 #else
-    int flags = fcntl(_socket_in, F_GETFL, 0);
+    int flags = fcntl(_socket, F_GETFL, 0);
     flags |= O_NONBLOCK;
-    fcntl(_socket_in, F_SETFL, flags);
-#endif
-}
-void DTcp::unblock_out()
-{
-#ifdef _WIN32
-    BOOL l = TRUE;
-    ioctlsocket(_socket_out, FIONBIO, (unsigned long* ) &l);
-#else
-    int flags = fcntl(_socket_out, F_GETFL, 0);
-    flags |= O_NONBLOCK;
-    fcntl(_socket_out, F_SETFL, flags);
+    fcntl(_socket, F_SETFL, flags);
 #endif
 }
 int DTcp::make_server(int port, const char *address)
 {
-//    stop_in();
-//    stop_out();
-    if( set_in(port, address)) return -1;
-    if( (_socket_in = __socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET ) return -1;
-    if( __bind(_socket_in, (sockaddr* ) &_addr_inner, sizeof (_addr_inner)) ) return -1;
-    if( __listen(_socket_in, 10) ) return -1;
+    if( set_stat(port, address)) return -1;
+    if( (_socket = __socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET ) return -1;
+    if( __bind(_socket, (sockaddr* ) &_addr, sizeof (_addr)) ) return -1;
+    if( __listen(_socket, 10) ) return -1;
     _me = Server;
     return 0;
 }
 int DTcp::make_client(int port, const char *address)
 {
-//    stop_in();
-//    stop_out();
-    if( set_out(port, address) ) return -1;
-    if( (_socket_out = socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET) return -1;
+    if( set_stat(port, address) ) return -1;
+    if( (_socket = __socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET) return -1;
     _me = Client;
     info("Set Client");
     return 0;
@@ -409,14 +359,14 @@ int DTcp::wait_connection()
         FUNC_ERROR("I am not server", 0);
         return -1;
     }
-    if(!is_valid_socket(_socket_in))
+    if(!is_valid_socket(_socket))
     {
-        FUNC_ERROR("wrong socket", _socket_in);
+        FUNC_ERROR("wrong socket", _socket);
         return -1;
     }
     info("wait connection...");
     int new_len = sizeof(sockaddr_in);
-    if( (_socket_out = __accept (_socket_in, (sockaddr* ) &_addr_outer, &new_len) ) == INVALID_SOCKET) return -1;
+    if( (_socket = __accept (_socket, (sockaddr* ) &_addr, &new_len) ) == INVALID_SOCKET) return -1;
     info("connected");
     return 0;
 }
@@ -428,71 +378,72 @@ int DTcp::try_connect()
         return -1;
     }
     info("try connect...");
-    if(__connect (_socket_out, (sockaddr* ) &_addr_outer, sizeof (sockaddr_in))) return -1;
+    if(__connect (_socket, (sockaddr* ) &_addr, sizeof (sockaddr_in))) return -1;
     info("connected");
     return 0;
 }
-
-
+int DTcp::wait_connection(int port, const char *address)
+{
+    if( set_stat(port, address)) return -1;
+    if( (_socket = __socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET ) return -1;
+    if( __bind(_socket, (sockaddr* ) &_addr, sizeof (_addr)) ) return -1;
+    if( __listen(_socket, 10) ) return -1;
+    info("wait connection...");
+    int new_len = sizeof(sockaddr_in);
+    if( (_socket = __accept (_socket, (sockaddr* ) &_addr, &new_len) ) == INVALID_SOCKET) return -1;
+    info("connected");
+    return 0;
+}
+int DTcp::try_connect(int port, const char *address)
+{
+    if( set_stat(port, address) ) return -1;
+    if( (_socket = __socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET) return -1;
+    info("try connect...");
+    if(__connect (_socket, (sockaddr* ) &_addr, sizeof (sockaddr_in))) return -1;
+    info("connected");
+    return 0;
+}
 int DTcp::check_readability(int sec, int usec)
 {
-    if(!is_valid_socket(_socket_out))
+    if(!is_valid_socket(_socket))
     {
-        FUNC_ERROR("wrong socket", _socket_out);
+        FUNC_ERROR("wrong socket", _socket);
         return -1;
     }
     fd_set fdread;
-    int r_select = 0;
-
     struct timeval timeout;
     timeout.tv_sec = sec;
     timeout.tv_usec = usec;
 
     FD_ZERO(&fdread);
-    FD_SET(_socket_out, &fdread);
-    if( __select(&fdread, nullptr, nullptr, &timeout)  > 0)
-    {
-        return FD_ISSET(_socket_out, &fdread);
-    }
-
+    FD_SET(_socket, &fdread);
+    if( __select(&fdread, nullptr, nullptr, &timeout)  > 0) return FD_ISSET(_socket, &fdread);
+    else return WSAE;
     return 0;
 }
 int DTcp::check_writability(int sec, int usec)
 {
-    if(!is_valid_socket(_socket_out))
+    if(!is_valid_socket(_socket))
     {
-        FUNC_ERROR("wrong socket", _socket_out);
+        FUNC_ERROR("wrong socket", _socket);
         return -1;
     }
     fd_set fdwrite;
-    int r_select = 0;
-
     struct timeval timeout;
     timeout.tv_sec = sec;
     timeout.tv_usec = usec;
 
     FD_ZERO(&fdwrite);
-    FD_SET(_socket_out, &fdwrite);
-    if( __select(nullptr, &fdwrite, nullptr, &timeout)  > 0)
-    {
-        return FD_ISSET(_socket_out, &fdwrite);
-    }
-
+    FD_SET(_socket, &fdwrite);
+    if( __select(nullptr, &fdwrite, nullptr, &timeout)  > 0) return FD_ISSET(_socket, &fdwrite);
+    else return WSAE;
     return 0;
 }
-int DTcp::stop_in()
+int DTcp::stop()
 {
     int r = 0;
-    if( (r = __shutdown(_socket_in, SD_BOTH)) ) return r;
-    if( (r = __closesocket(_socket_in)) ) return r;
-    _socket_in = INVALID_SOCKET;
-    return 0;
-}
-int DTcp::stop_out()
-{
-    int r = 0;
-    if( (r = __shutdown(_socket_out, SD_BOTH)) ) return r;
-    if( (r = __closesocket(_socket_out)) ) return r;
-    _socket_out = INVALID_SOCKET;
+    if( (r = __shutdown(_socket, SD_BOTH)) ) return r;
+    if( (r = __closesocket(_socket)) ) return r;
+    _socket = INVALID_SOCKET;
     return 0;
 }
