@@ -689,7 +689,7 @@ public:
         while(true)
         {
             if(!fm->connection_status) break;
-            if( ( check = fm->control.check_readability(0,3000)) > 0)
+            if(fm->control.check_readability(0,3000))
             {
                 if(data_index)
                 {
@@ -920,8 +920,8 @@ public:
                     if(rb < 0) break;
                 }
             }
-            else if(check<0) return;
-            if( ( check = fm->control.check_writability(0,3000)) > 0)
+
+            if(fm->control.check_writability(0,3000))
             {
                 if(!fm->connection_status)
                 {
@@ -1197,7 +1197,7 @@ public:
                         else current_send_file->si->interuptable = true;
                     }
                 }
-            } else if(check<0) break;
+            }
 
             if(data_index == FM_DISCONNECT_BYTE) break;
         }
