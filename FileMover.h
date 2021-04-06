@@ -689,7 +689,7 @@ public:
         while(true)
         {
             if(!fm->connection_status) break;
-            if(fm->control.check_readability(0,3000))
+            if(fm->control.check_readability(0,3000) > 0)
             {
                 if(data_index)
                 {
@@ -920,8 +920,7 @@ public:
                     if(rb < 0) break;
                 }
             }
-
-            if(fm->control.check_writability(0,3000))
+            if(fm->control.check_writability(0,3000) > 0)
             {
                 if(!fm->connection_status)
                 {
@@ -1198,11 +1197,8 @@ public:
                     }
                 }
             }
-
             if(data_index == FM_DISCONNECT_BYTE) break;
         }
-
-
         std::cout << "Main stream is over" <<std::endl;
     }
 public:

@@ -40,9 +40,6 @@ static void winsock_start()
 class DTcp
 {
 public:
-    enum state {Default = -1, Client = 1, Server = 2};
-    enum check_code {recvall = 333, recvless = 222, recverr = 111};
-
     DTcp();
 
     void unblock();
@@ -92,10 +89,7 @@ private:
     int    __select(fd_set* read_set, fd_set* write_set, fd_set* err_set, struct timeval* tv);
 private:
     SOCKET _socket;
-
     sockaddr_in _addr;
-
-    state _me;
 
     struct packet_recv_info
     {

@@ -307,12 +307,10 @@ int DTcp::__select(fd_set* read_set, fd_set* write_set, fd_set* err_set, struct 
 //---------------------------------------------------------------------------------------
 DTcp::DTcp()
 {
-    _me = Default;
     #ifdef _WIN32
     ZeroMemory(&_addr,sizeof(sockaddr_in));
     #else
-    memset(&_addr_inner, 0, sizeof(sockaddr_in));
-    memset(&_addr_outer, 0, sizeof(sockaddr_in));
+    memset(&_addr, 0, sizeof(sockaddr_in));
     #endif
     _addr.sin_family = AF_INET;
     _socket = INVALID_SOCKET;
@@ -341,24 +339,16 @@ int DTcp::make_server(int port, const char *address)
     if( (_socket = __socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET ) return -1;
     if( __bind(_socket, (sockaddr* ) &_addr, sizeof (_addr)) ) return -1;
     if( __listen(_socket, 10) ) return -1;
-    _me = Server;
     return 0;
 }
 int DTcp::make_client(int port, const char *address)
 {
     if( set_stat(port, address) ) return -1;
     if( (_socket = __socket(AF_INET,SOCK_STREAM,0)) == INVALID_SOCKET) return -1;
-    _me = Client;
-    info("Set Client");
     return 0;
 }
 int DTcp::wait_connection()
 {
-    if(_me != Server)
-    {
-        FUNC_ERROR("I am not server", 0);
-        return -1;
-    }
     if(!is_valid_socket(_socket))
     {
         FUNC_ERROR("wrong socket", _socket);
@@ -372,11 +362,6 @@ int DTcp::wait_connection()
 }
 int DTcp::try_connect()
 {
-    if(_me != Client)
-    {
-        FUNC_ERROR("I am not client", _me);
-        return -1;
-    }
     info("try connect...");
     if(__connect (_socket, (sockaddr* ) &_addr, sizeof (sockaddr_in))) return -1;
     info("connected");
