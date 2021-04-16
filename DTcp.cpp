@@ -65,7 +65,6 @@ int DTcp::recv_packet(void* data, int flag1, int flag2)
         if( rb > 0) tb += rb;
         else return tb;
     }while(tb < packet_size);
-
     return tb;
 }
 int DTcp::send_packet(const void* data, int len, int flag1, int flag2)

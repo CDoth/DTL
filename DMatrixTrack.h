@@ -20,6 +20,7 @@ public:
     image_t image() const {return _image;}
     track_t track() const {return _track;}
     int size() const {return _size;}
+
 private:
     void make_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h, bool make_back);
     void make_track2(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h, bool make_back);
@@ -252,10 +253,10 @@ void DMatrixTrack<T>::make_track2(int w_in, int h_in, int kw, int kh, int paddin
 }
 //----------------------------------------------------------------------------------------------------------------------------------------
 template <class T>
-void convolution(T** track, int track_size, const DMatrix<T>& kernel, DMatrix<T>& out)
+void convolution2(const DMatrixTrack<T>& tr, const DMatrix<T>& kernel, DMatrix<T>& out)
 {
-    T** track_it = track;
-    T** track_end = track_it + track_size;
+    T** track_it = tr.track();
+    T** track_end = track_it + tr.size();
 
     typedef typename DMatrix<T>::iterator iter;
     typedef typename DMatrix<T>::const_iterator citer;
@@ -268,10 +269,8 @@ void convolution(T** track, int track_size, const DMatrix<T>& kernel, DMatrix<T>
     {
         v = 0;
         kernel_it = kernel.constBegin();
-//        qDebug()<<"------------------";
         while(kernel_it != kernel_end)
         {
-//            qDebug()<<" --- in:"<<**track_it<<"k:"<<*kernel_it<<"="<<**track_it * *kernel_it;
             v += *kernel_it++ * **track_it++;
         }
         *out_it++ += v;
@@ -377,19 +376,22 @@ void print_matrix(const DMatrix<int>& m, const char* message = nullptr)
 }
 
 
-    DMatrix<int> m(3,3);
+//    int test_size = 400;
+//    DMatrix<int> m(500,500);
+//    DMatrix<int> k(7,7);
+    int test_size = 1;
+    DMatrix<int> m(4,4);
     DMatrix<int> k(2,2);
+
     m.run(set_rand);
     k.run(set_rand);
 
-    DMatrixTrack<int> track;
-    track.make_forward_track(m.width(), m.height(), k.width(), k.height(), 0,0,0,0);
+    DMatrixTrack<int> main_track;
+    main_track.make_forward_track(m.width(), m.height(), k.width(), k.height(), 0, 0, 1, 1, 0, 0);
+    DMatrix<int> out(main_track.out_w(), main_track.out_h());
+    main_track.set_image(m);
 
-    DMatrix<int> out(2, 2);
-
-    track.set_image(m);
-    convolution(track.track(), track.size(), k, out);
-
+    convolution2(main_track, k, out);
 
     print_matrix(m, "input");
     print_matrix(k, "kernel");

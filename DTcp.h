@@ -6,7 +6,7 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <windows.h>
-#include <QDebug>
+//#include <QDebug>
 #else
 
 #define SOCKET int
