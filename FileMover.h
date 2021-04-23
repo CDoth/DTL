@@ -382,8 +382,8 @@ public:
     {
         if(recv_plan.list.size())
         {
-            auto b = recv_plan.list.begin();
-            auto e = recv_plan.list.end();
+            auto b = recv_plan.list.constBegin();
+            auto e = recv_plan.list.constEnd();
             file_handler* h = nullptr;
             while( b != e )
             {
@@ -524,8 +524,8 @@ public:
         if(files.size() > 1)
         {
             file_handler* last  = first;
-            auto b = files.begin() + 1;
-            auto e = files.end();
+            auto b = files.constBegin() + 1;
+            auto e = files.constEnd();
             while( b != e )
             {
                 auto curr = send_map[*b];
@@ -614,8 +614,8 @@ public:
             std::cout << "send queue is empty" << std::endl;
             return;
         }
-        auto b = send_queue.list.begin();
-        auto e = send_queue.list.end();
+        auto b = send_queue.list.constBegin();
+        auto e = send_queue.list.constEnd();
         while( b != e ) print_file_info((*b++)->f);
     }
     void push_new_file_handler(file_handler* f)

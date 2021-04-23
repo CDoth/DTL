@@ -209,8 +209,8 @@ struct SENDC
     send_iterator i;
     send_iterator e;
 
-    inline send_iterator begin() const {return c.begin();}
-    inline send_iterator end() const {return c.end();}
+    inline send_iterator begin() const {return c.constBegin();}
+    inline send_iterator end() const {return c.constEnd();}
     inline bool send_one(send_iterator it)
     {
         int sb = 0;

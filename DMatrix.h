@@ -63,10 +63,10 @@ class DMatrix
 {
 public:
     DMatrix();
-    DMatrix(int w, int h, T* place = nullptr);
+    DMatrix(int w, int h, T *place = nullptr);
 
     //-----------------------------------
-    DMatrix(const DMatrix& m, T*p = nullptr);
+    DMatrix(const DMatrix &m, T*p = nullptr);
     DMatrix& operator=(const DMatrix&);
     //-----------------------------------
     ~DMatrix()
@@ -88,8 +88,9 @@ public:
     void fill(const T&);
     void run(void (*F)(T&));
     void run_to(const T& (*F)(const T&), DMatrix* to);
-    void copy(const DMatrix& from);
-    void unite(const DMatrix<T>& with);
+    void copy(const DMatrix &from);
+    void unite(const DMatrix<T> &with);
+    void multiply(const DMatrix<T> &with);
 
     int height() const {return data()->h;}
     int width()  const {return data()->w;}
@@ -261,6 +262,14 @@ void DMatrix<T>::unite(const DMatrix<T>& with)
     iterator e = end();
     const_iterator b2 = with.constBegin();
     while(b!=e) *b++ += *b2++;
+}
+template <class T>
+void DMatrix<T>::multiply(const DMatrix<T>& with)
+{
+    iterator b = begin();
+    iterator e = end();
+    const_iterator b2 = with.constBegin();
+    while(b!=e) *b++ *= *b2++;
 }
 template <class T>
 void DMatrix<T>::copy(const DMatrix& from)

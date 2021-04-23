@@ -45,8 +45,8 @@ public:
             set_mem(data, data_size);
             zero_mem(data, data_size);
             auto it = data;
-            auto src_mtx = d.collection.begin();
-            auto src_e = d.collection.end();
+            auto src_mtx = d.collection.constBegin();
+            auto src_e = d.collection.constEnd();
             width = d.width;
             height = d.height;
             while(src_mtx != src_e)

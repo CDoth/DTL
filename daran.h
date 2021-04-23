@@ -4,16 +4,20 @@
 #include <stdint.h>
 #include <iostream>
 #include <vector>
+#include <map>
 static inline bool buffer_compare(const void* buffer1, const void* buffer2, int size)
 {
     if(buffer1 == nullptr || buffer2 == nullptr) return false;
-
-//    qDebug()<< "-------------- BUFFER COMAPRE ----------";
-
     uint8_t* b1 = (uint8_t*)buffer1;
     uint8_t* b2 = (uint8_t*)buffer2;
     uint8_t* e1 = (uint8_t*)buffer1 + size;
     while(b1!=e1)  if(*b1++ != *b2++) return false;
+    return true;
+}
+static inline bool buffer_compare2(const uint8_t* buffer1, const uint8_t* buffer2, int size)
+{
+    uint8_t* e1 = (uint8_t*)buffer1 + size;
+    while(buffer1!=e1)  if(*buffer1++ != *buffer2++) return false;
     return true;
 }
 static int find_bytes_pos(const void* sample, const void* buffer, int sample_size, int buffer_size)
@@ -47,6 +51,7 @@ static const void* find_bytes(const void* sample, const void* buffer, int sample
     uint8_t* be = (uint8_t*)buffer + buffer_size - sample_size + 1;
     uint8_t* bse = b + sample_size - 1;
 
+
     while(b!=be)
     {
         if(*s == *b && *se == *bse)
@@ -55,6 +60,15 @@ static const void* find_bytes(const void* sample, const void* buffer, int sample
     }
 
     return nullptr;
+}
+static const void* find_bytes2(const void *sample, const void *buffer, int sample_size, int buffer_size, const std::map<uint8_t, int> &stop_list)
+{
+    uint8_t *s = (uint8_t*)sample;
+    uint8_t *se = (uint8_t*)sample + sample_size;
+    uint8_t *b = (uint8_t*)buffer;
+    uint8_t *be = (uint8_t*)buffer + buffer_size - sample_size + 1;
+
+
 }
 static int find_difference_pos(void* first, void* second, int range)
 {

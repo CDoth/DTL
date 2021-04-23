@@ -116,10 +116,10 @@ public:
     iterator first() {detach(); return begin();}
     iterator last(){detach(); return data()->t() + data()->size - 1;}
 
-    const_iterator begin() const {return data()->t();}
-    const_iterator end() const {return data()->t() + data()->size;}
-    const_iterator first() const {return begin();}
-    const_iterator last() const {return data()->t() + data()->size - 1;}
+    const_iterator constBegin() const {return data()->t();}
+    const_iterator constEnd() const {return data()->t() + data()->size;}
+    const_iterator constFirst() const {return begin();}
+    const_iterator constLast() const {return data()->t() + data()->size - 1;}
 //-------------------------------------------------------------------------------------------
 public:
     void setMode(WatcherMode m)
@@ -159,8 +159,8 @@ public:
     int count(const T& t, int start_pos = 0, int end_pos = 0) const
     {
         if(start_pos >= end_pos) start_pos = end_pos = 0;
-        auto b = begin() + start_pos;
-        auto e = end_pos ? begin() + end_pos : end();
+        auto b = constBegin() + start_pos;
+        auto e = end_pos ? constBegin() + end_pos : constEnd();
         int i=0;
         while( b != e ) if( *b++ == t ) ++i;
         return i;
