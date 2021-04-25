@@ -62,4 +62,11 @@ private:
     int n;
     WatcherMode m;
 };
+template <class T>
+void share(T& ob1, T& ob2)
+{
+    ob1 = ob2;
+    ob1.setMode(ShareWatcher);
+    ob2.setMode(ShareWatcher);
+}
 #endif // DWATCHER_H

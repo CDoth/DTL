@@ -9,11 +9,12 @@ class DRgbImage
 {
 public:
     DRgbImage();
-    DRgbImage(const char* path, int w = 0, int h = 0);
+    DRgbImage(const char *path, int w = 0, int h = 0);
     DRgbImage(const DRgbImage&, int w = 0, int h = 0);
     DRgbImage(int w, int h);
     ~DRgbImage();
     DRgbImage& operator=(const DRgbImage&);
+    DRgbImage& operator=(const DMultiMatrix<T> &mm);
 
 
     typedef T value_type;
@@ -23,7 +24,7 @@ public:
     const matrix& red() const {return _red;}
     const matrix& green() const {return _green;}
     const matrix& blue() const {return _blue;}
-    const DMultiMatrix<value_type>& channels() const {return _channels;}
+    DMultiMatrix<value_type>& channels() {return _channels;}
 
     int width() const {return _width;}
     int height() const {return _height;}
@@ -39,6 +40,8 @@ public:
 
     void fill_channels(const matrix& m) {_red = m; _green = m; _blue = m;}
     void fill_channels(const value_type& v) {_red.fill(v); _green.fill(v); _blue.fill(v);}
+
+    void open(const char *path, int w = 0, int h = 0);
 
     template <class rate_value> DMultiMatrix<rate_value> rates(int q);
 private:
@@ -80,9 +83,9 @@ DRgbImage<T,qv>::DRgbImage(const char* path, int w, int h)
     _width = w? w: qimage.width();
     _height = h? h: qimage.height();
     _channels = DMultiMatrix<value_type>(3, _width, _height);
-    _red = _channels[0]; _red.setMode(ShareWatcher);
-    _green = _channels[1]; _green.setMode(ShareWatcher);
-    _blue = _channels[2]; _blue.setMode(ShareWatcher);
+    share(_red, _channels[0]);
+    share(_green, _channels[1]);
+    share(_blue, _channels[2]);
 
     for(int i=0;i!=_width;++i)
     {
@@ -129,6 +132,37 @@ DRgbImage<T,qv>::~DRgbImage()
 {
 }
 
+template<class T, int qv>
+DRgbImage<T, qv> &DRgbImage<T, qv>::operator=(const DMultiMatrix<T> &mm)
+{
+    _width = mm.width();
+    _height = mm.height();
+    _channels = mm;
+    share(_red, _channels[0]);
+    share(_green, _channels[1]);
+    share(_blue, _channels[2]);
+}
+template <class T, int qv>
+void DRgbImage<T, qv>::open(const char *path, int w, int h)
+{
+    QImage qimage(path);
+    _width = w? w: qimage.width();
+    _height = h? h: qimage.height();
+    _channels = DMultiMatrix<value_type>(3, _width, _height);
+    share(_red, _channels[0]);
+    share(_green, _channels[1]);
+    share(_blue, _channels[2]);
+
+    for(int i=0;i!=_width;++i)
+    {
+        for(int j=0;j!=_height;++j)
+        {
+            _red[i][j] = static_cast<value_type>(QColor(qimage.pixel(i,j)).red()) / static_cast<value_type>(qvalue);
+            _green[i][j] = static_cast<value_type>(QColor(qimage.pixel(i,j)).green()) / static_cast<value_type>(qvalue);
+            _blue[i][j] = static_cast<value_type>(QColor(qimage.pixel(i,j)).blue()) / static_cast<value_type>(qvalue);
+        }
+    }
+}
 
 //------------------------------------------------------------------------------------------
 #endif // DRGBIMAGE_H

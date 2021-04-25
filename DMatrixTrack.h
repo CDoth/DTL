@@ -7,21 +7,23 @@ class DMatrixTrack
 {
 public:
     DMatrixTrack() : _image(nullptr), _track(nullptr){}
-    typedef T* image_t;
+    typedef T*  image_t;
     typedef T** track_t;
-    void set_image(T* data, int size);
+    void set_image(T *data, int size);
     void set_image(const DMatrix<T>&);
+
     void make_forward_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h);
     void make_back_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h);
     void make_pooling_track(int w_in, int h_in, int pw, int ph, int step_w, int step_h, int stride_w, int stride_h);
 
-
     int out_w() const {return ow;}
     int out_h() const {return oh;}
 
-    image_t image() const {return _image;}
+    const image_t image() const {return _image;}
     const track_t begin() const {return _track;}
     const track_t end() const {return _track + _size;}
+
+
     int size() const {return _size;}
 
 private:
@@ -178,7 +180,7 @@ void DMatrixTrack<T>::make_pooling_track(int w_in, int h_in, int pw, int ph, int
     const int w_lim = ow * virtual_pw + step_w;
     const int h_lim = oh * virtual_ph + step_h;
 
-    const int pooling_area = pw * ph;
+    pooling_area = pw * ph;
 
     const int image_size = w_in * h_in;
     _size = ow * oh * pooling_area;
@@ -186,35 +188,47 @@ void DMatrixTrack<T>::make_pooling_track(int w_in, int h_in, int pw, int ph, int
     reset_mem(_track, _size);
 
     int track_i = 0;
-
 //    qDebug()<<"vpw:"<<virtual_pw<<"vph:"<<virtual_ph;
-    for(int i=0;i < w_lim; i += (step_w + virtual_pw))
+
+    int w_pos = 0;
+    int h_pos = 0;
+    int window_w_pos = 0;
+    int window_h_pos = 0;
+    for(int i=0;i != ow; ++i)
     {
-        for(int j=0;j < h_lim; j += (step_h + virtual_ph))
+        h_pos = 0;
+        for(int j=0;j != oh; ++j)
         {
-            for(int i_window = 0; i_window < virtual_pw; i_window += (stride_w+1))
+            window_w_pos = 0;
+            for(int i_window = 0; i_window != pw; ++i_window)
             {
-                for(int j_window = 0; j_window < virtual_ph; j_window += (stride_h+1))
+                window_h_pos = 0;
+                for(int j_window = 0; j_window !=ph; ++j_window)
                 {
-                    _track[track_i++] = &_image[(i+i_window) * h_in + (j + j_window)];
+//                    qDebug()<<"w_pos:"<<w_pos<<"window_w_pos:"<<window_w_pos<<"h_pos:"<<h_pos<<"window_h_pos:"<<window_h_pos;
+                    _track[track_i++] = &_image[(w_pos+window_w_pos) * h_in + (h_pos + window_h_pos)];
+
+                    window_h_pos += stride_h + 1;
                 }
+                window_w_pos += stride_w + 1;
             }
+            h_pos += step_h + virtual_ph;
         }
+        w_pos += step_w + virtual_pw;
     }
 }
 //----------------------------------------------------------------------------------------------------------------------------------------
 
-struct mx_signal
-{
-    int raw;
-    int act;
 
-    int* err;
-//    int a1;
-//    int a2;
-//    int a3;
+template <class value_type>
+struct complex_value_type
+{
+    value_type *raw;
+    value_type *sig;
+    value_type *err;
 };
-static void convolution_com(const DMatrixTrack<mx_signal> &tr, const DMatrix<int> &kernel, DMatrix<mx_signal> &out)
+template <class T>
+void convolution(const DMatrixTrack<T> &tr, const DMatrix<T> &kernel, DMatrix<T> &out)
 {
     auto track_it = tr.begin();
     auto track_end =  tr.end();
@@ -222,30 +236,6 @@ static void convolution_com(const DMatrixTrack<mx_signal> &tr, const DMatrix<int
     auto out_it = out.begin();
     auto kernel_it = kernel.constBegin();
     auto kernel_end = kernel.constEnd();
-
-    int v = 0;
-    while(track_it != track_end)
-    {
-        v = 0;
-        kernel_it = kernel.constBegin();
-        while(kernel_it != kernel_end)
-        {
-            v += *kernel_it++ * (**track_it++).act;
-        }
-        (*out_it++).raw += v;
-    }
-}
-template <class T>
-void convolution(const DMatrixTrack<T> &tr, const DMatrix<T> &kernel, DMatrix<T> &out)
-{
-    auto track_it = tr.begin();
-    auto track_end =  tr.end();
-
-    typedef typename DMatrix<T>::iterator iter;
-    typedef typename DMatrix<T>::const_iterator citer;
-    iter out_it = out.begin();
-    citer kernel_it = kernel.constBegin();
-    citer kernel_end = kernel.constEnd();
 
     T v = 0;
     while(track_it != track_end)
@@ -293,6 +283,40 @@ void convolution2(const DMatrixTrack<T> &tr, const DMatrix<T> &kernel, DMatrix<T
         ++raw_out_it; ++act_out_it; ++deract_out_it;
     }
 }
+/*
+template <class T>
+void convolution2_complex(const DMatrixTrack<T> &tr, const DMatrix<T> &kernel, DMatrix<complex_value_type<T>> &out, DMatrix<T> &deract_out,
+                  T (*_act)(T), T (*_deract)(T))
+{
+    auto track_it = tr.begin();
+    auto track_end = tr.end();
+
+    auto out_it = out.begin();
+    auto deract_out_it = deract_out.begin();
+
+    auto kernel_it = kernel.constBegin();
+    auto kernel_end = kernel.constEnd();
+
+    T v = 0;
+//    qDebug()<<"===================================== CONVOLUTION: ============================";
+    while(track_it != track_end)
+    {
+        v = 0;
+        kernel_it = kernel.constBegin();
+        while(kernel_it != kernel_end)
+        {
+//            qDebug()<<"k:"<<*kernel_it<<"in:"<<**track_it<<" = "<<*kernel_it * **track_it;
+            v += *kernel_it++ * **track_it++;
+        }
+//        qDebug()<<"-------- sum:"<< v << "prev:" << *raw_out_it;
+        (*out_it).raw = v;
+        (*out_it).sig = _act(v);
+        *deract_out_it = _deract(v);
+        ++out_it; ++deract_out_it;
+    }
+}
+*/
+
 template <class T>
 void back_convolution(const DMatrixTrack<T> &out_error_track, const DMatrix<T> &kernel, DMatrix<T> &in_error, const DMatrix<T> &raw_in, DMatrix<T> &kernel_delta)
 {
@@ -340,15 +364,15 @@ void back_convolution2(const DMatrixTrack<T> &out_error_track, const DMatrix<T> 
 
     auto input_it = input.constBegin();
 
-    qDebug()<<"===================================== BACK CONVOLUTION: ============================";
+//    qDebug()<<"===================================== BACK CONVOLUTION: ============================";
     while(track_it != track_end)
     {
         kernel_it = kernel.constBegin();
         kernel_delta_it = kernel_delta.begin();
         while(kernel_it != kernel_end)
         {
-            qDebug()<<"out error:"<<**track_it<<"k:"<<*kernel_it<<"in error:"<<**track_it * *kernel_it<<"input:"<<*input_it<<"rate:"<<rate
-                   <<"delta w:"<<**track_it * *input_it * rate;
+//            qDebug()<<"out error:"<<**track_it<<"k:"<<*kernel_it<<"in error:"<<**track_it * *kernel_it<<"input:"<<*input_it<<"rate:"<<rate
+//                   <<"delta w:"<<**track_it * *input_it * rate;
 
             *out_it += **track_it * *kernel_it;
             *kernel_delta_it += **track_it * *input_it * rate;
@@ -357,41 +381,114 @@ void back_convolution2(const DMatrixTrack<T> &out_error_track, const DMatrix<T> 
             ++kernel_it;
             ++track_it;
         }
-        qDebug()<<"-----------";
+//        qDebug()<<"-----------";
         ++out_it;
         ++input_it;
     }
 }
 template <class T>
-void max_pooling(const DMatrixTrack<T> &input_pooling_track, DMatrixTrack<T> &output_pooling_track,  DMatrix<T> &out)
+void max_pooling(const DMatrixTrack<complex_value_type<T>> &input_pooling_track,
+                  DMatrix<T> &out, DMatrix<T> &raw, DMatrix<T*> &error_trace)
 {
     auto track_it = input_pooling_track.begin();
     auto track_end = input_pooling_track.end();
-    auto out_track_it = output_pooling_track.begin();
+
     auto out_it = out.begin();
-    int i=1;
+    auto raw_out_it = raw.begin();
+    auto error_trace_it = error_trace.begin();
+
+    int i=0;
     T max = 0;
-    max = **track_it++;
+    T raw_value = 0;
 
     while(track_it != track_end)
     {
         if(i==0)
         {
-            max = **track_it;
-            *out_track_it = *track_it;
-            ++track_it;
+            max = *(*track_it)->sig;
+            raw_value = *(*track_it)->raw;
+            *error_trace_it = (*track_it)->err;
+            ++track_it;  ++i;
         }
-        if(**track_it > max) max = **track_it, *out_track_it = *track_it;
+//        qDebug()<<"sig:"<<(*track_it);
+        if(*(*track_it)->sig > max)
+        {
+//            qDebug()<<"max:"<<max;
+            max = *(*track_it)->sig;
+            raw_value = *(*track_it)->raw;
+            *error_trace_it = (*track_it)->err;
+        }
         ++track_it; ++i;
         if(i==input_pooling_track.pooling_area)
         {
-            ++out_track_it;
+//            qDebug()<<"max_pooling:"<<&out<<max;
             *out_it++ = max;
+            *raw_out_it++ = raw_value;
+            ++error_trace_it;
             i=0;
         }
     }
 }
+template <class T>
+void mean_pooling(const DMatrixTrack<complex_value_type<T>> &input_pooling_track,
+                 DMatrix<T> &out, DMatrix<T> &raw)
+{
+    auto track_it = input_pooling_track.begin();
+    auto track_end = input_pooling_track.end();
 
+    auto out_it = out.begin();
+    auto raw_out_it = raw.begin();
+    int i=0;
+    T mean = 0;
+    T raw_mean = 0;
+
+    while(track_it != track_end)
+    {
+        mean += *(*track_it)->sig;
+        raw_mean += *(*track_it)->raw;
+
+        ++track_it; ++i;
+        if(i==input_pooling_track.pooling_area)
+        {
+            *out_it++ = mean / input_pooling_track.pooling_area;
+            *raw_out_it++ = raw_mean / input_pooling_track.pooling_area;
+            mean = 0;
+            raw_mean = 0;
+            i=0;
+        }
+    }
+}
+template <class T>
+void back_max_pooling(DMatrix<T*> &error_trace, const DMatrix<T> &out_error)
+{
+    auto error_trace_it = error_trace.begin();
+    auto error_trace_end = error_trace.end();
+    auto out_error_it = out_error.constBegin();
+
+    while( error_trace_it != error_trace_end )
+    {
+        **error_trace_it++ = *out_error_it++;
+    }
+}
+template <class T>
+void back_mean_pooling(const DMatrixTrack<complex_value_type<T>> &input_pooling_track, const DMatrix<T> &out_error)
+{
+    auto track_it = input_pooling_track.begin();
+    auto track_end = input_pooling_track.end();
+    auto out_error_it = out_error.constBegin();
+
+    int i=0;
+    while( track_it != track_end )
+    {
+        *(*track_it)->err = *out_error_it / input_pooling_track.pooling_area;
+        ++track_it; ++i;
+        if(i==input_pooling_track.pooling_area)
+        {
+            ++out_error_it;
+            i=0;
+        }
+    }
+}
 template <class T>
 class DDuplexMatrixTrack
 {

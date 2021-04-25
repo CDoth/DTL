@@ -3,17 +3,6 @@
 #include "DMatrix.h"
 #include "DArray.h"
 
-static void print_matrix2(const DMatrix<int>& m, const char* message = nullptr)
-{
-    if(message) printf("%s:\n", message);
-    for(int i=0;i!=m.width();++i)
-    {
-        for(int j=0;j!=m.height();++j)
-            printf("%d ", m[i][j]);
-        printf("\n");
-    }
-    printf("\n");
-}
 template <class T>
 class DMultiMatrixData
 {
@@ -91,12 +80,12 @@ public:
     {
         std::swap(w, with.w);
     }
-    DMultiMatrix(const DMultiMatrix& mm)
+    DMultiMatrix(const DMultiMatrix &mm)
     {
         w = mm.w;
         w->refUp();
     }
-    DMultiMatrix& operator=(const DMultiMatrix& a)
+    DMultiMatrix& operator=(const DMultiMatrix &a)
     {
         if(w != a.w)
         {
@@ -129,10 +118,10 @@ public:
     data_iterator dataBegin() {detach(); return data()->data;}
     data_iterator dataEnd() {detach(); return data()->data + data()->data_size;}
 
-    const_iterator begin() const {return data()->collection.constBegin();}
-    const_iterator end() const {data()->collection.constEnd();}
-    const_data_iterator dataBegin() const {return data()->data;}
-    const_data_iterator dataEnd() const {return data()->data + this->get()->data_size;}
+    const_iterator constBegin() const {return data()->collection.constBegin();}
+    const_iterator constEnd() const {return data()->collection.constEnd();}
+    const_data_iterator constDataBegin() const {return data()->data;}
+    const_data_iterator constDataEnd() const {return data()->data + this->get()->data_size;}
 
     void make_unique()
     {
@@ -151,7 +140,7 @@ public:
         }
     }
 
-private:
+public:
 
     DMultiMatrixData<T>* clone()
     {

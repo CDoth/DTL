@@ -3,6 +3,7 @@
 #include <DWatcher.h>
 #include "dmem.h"
 
+#include <QDebug>
 template <class T>
 class DMatrixData
 {
@@ -91,6 +92,7 @@ public:
     void copy(const DMatrix &from);
     void unite(const DMatrix<T> &with);
     void multiply(const DMatrix<T> &with);
+    void multiply(const T &value);
 
     int height() const {return data()->h;}
     int width()  const {return data()->w;}
@@ -133,6 +135,34 @@ public:
             }
         }
     }
+    void detach_debug()
+    {
+        qDebug()<<"DMatrix: detach_debug()";
+        if(!w->is_unique())
+        {
+            qDebug()<<"---1";
+            if(w->is_share() && w->otherSideRefs())
+            {
+                qDebug()<<"---2";
+                if(data()->placed)
+                {
+                    w->otherSide()->disconnect(clone());
+                    qDebug()<<"---3";
+                }
+                else
+                {
+                    w->disconnect(clone());
+                    qDebug()<<"---4";
+                }
+            }
+            else if(w->is_clone())
+            {
+                qDebug()<<"---5"<<w->refs();
+                w->refDown();
+                w = new DDualWatcher(clone(), CloneWatcher);
+            }
+        }
+    }
     DDualWatcher* w;
     DMatrixData<T>* data()
     {return reinterpret_cast<DMatrixData<T>* >(w->d());}
@@ -166,7 +196,7 @@ DMatrix<T>::DMatrix(int width, int height, T* place)
     w = new DDualWatcher(d, mode);
 }
 template <class T>
-DMatrix<T>::DMatrix(const DMatrix<T>& m, T* place)
+DMatrix<T>::DMatrix(const DMatrix<T> &m, T* place)
 {
     if(place)
     {
@@ -270,6 +300,13 @@ void DMatrix<T>::multiply(const DMatrix<T>& with)
     iterator e = end();
     const_iterator b2 = with.constBegin();
     while(b!=e) *b++ *= *b2++;
+}
+template <class T>
+void DMatrix<T>::multiply(const T &value)
+{
+    iterator b = begin();
+    iterator e = end();
+    while(b!=e) *b++ *= value;
 }
 template <class T>
 void DMatrix<T>::copy(const DMatrix& from)
