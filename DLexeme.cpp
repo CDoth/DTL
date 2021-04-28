@@ -1,5 +1,6 @@
 #include "DLexeme.h"
 
+#include <QDebug>
 DLexeme::DLexeme()
 {
     default_context = get_mem<read_context>(1);
@@ -32,8 +33,7 @@ bool DLexeme::is_special(char c, DLexeme::raw s)
 }
 bool DLexeme::base_equal(const lexeme &l, DLexeme::raw sample)
 {
-    bool res =  strlen(sample) == (size_t)l.size &&   buffer_compare(l.begin, sample, l.size) ;
-    return res;
+    return strlen(sample) == (size_t)l.size && buffer_compare(l.begin, sample, l.size);
 }
 void DLexeme::print_lexeme(const lexeme &l, bool show_size)
 {
@@ -296,7 +296,7 @@ DLexeme::lex_context DLexeme::read_rule(DLexeme::raw rule)
                 {
                     sublex* sl = get_mem<sublex>(1);
                     sl->next_or = nullptr;
-                    sl->n = 0;
+                    sl->n = 1;
                     sl->type = 0;
                     sl->l = l;
 
@@ -329,7 +329,23 @@ bool DLexeme::__check_block(DLexeme::sublex *sl, DLexeme::lexeme *l, bool direct
         if(sl->l.size <= l->size)
             switch (sl->type)
             {
-            case 0: if( (s = find_bytes_pos(sl->l.begin, l->begin, sl->l.size, l->size) ) >= 0){if(direct_mode) shift_lex(l, s+sl->l.size); return true;} break;
+            case 0:
+            {
+                bool res = true;
+                for(int i=0;i!=sl->n;++i)
+                {
+                    if( (s = find_bytes_pos(sl->l.begin, l->begin + s, sl->l.size, l->size - s) ) < 0)
+                    {
+                        res = false;
+                        break;
+                    }
+                    else ++s;
+                }
+                if(res) return res;
+                if(direct_mode && s>=0) shift_lex(l, s+sl->l.size);
+                break;
+
+            }
             case 1: if( buffer_compare(sl->l.begin, l->begin, sl->l.size)) {if(direct_mode) shift_lex(l, sl->l.size);return true;} break;
             case 2: if( buffer_compare(sl->l.begin, l->begin + (l->size - sl->l.size), sl->l.size)) {if(direct_mode) *l = share_null; return true;} break;
             case 3: if( sl->l.size == l->size && buffer_compare(sl->l.begin, l->begin, l->size)) {if(direct_mode) *l = share_null;return true;} break;
