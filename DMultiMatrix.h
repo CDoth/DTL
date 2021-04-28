@@ -10,14 +10,14 @@ public:
     DMultiMatrixData() : data(nullptr), data_size(0), width(0), height(0)
     {
     }
-    DMultiMatrixData(int s, int _w, int _h) : data(nullptr), width(_w), height(_h)
+    DMultiMatrixData(int s, int _w, int _h, T *place = nullptr) : data(nullptr), width(_w), height(_h)
     {
         if((data_size = width*height*s))
         {
             collection.reserve(s);
 
-            set_mem(data, data_size);
-            zero_mem(data, data_size);
+            placed = place? 1:0;
+            data = place? place : get_zmem<T>(data_size);
             auto it = data;
             while(s--)
             {
@@ -47,7 +47,8 @@ public:
     }
     ~DMultiMatrixData()
     {
-        free_mem(data);
+        if(!placed)
+            free_mem(data);
     }
 
     typedef typename DArray<DMatrix<T>>::iterator iterator;
@@ -60,6 +61,7 @@ public:
     int data_size;
     int width;
     int height;
+    int placed;
 };
 template <class T>
 class DMultiMatrix
@@ -70,11 +72,12 @@ public:
         DMultiMatrixData<T>* d = new DMultiMatrixData<T>();
         w = new DDualWatcher(d, CloneWatcher);
     }
-    DMultiMatrix(int size, int width, int height)
+    DMultiMatrix(int size, int width, int height, T *place = nullptr)
     {
-        DMultiMatrixData<T>* d = new DMultiMatrixData<T>(size, width, height);
+        DMultiMatrixData<T>* d = new DMultiMatrixData<T>(size, width, height, place);
         w = new DDualWatcher(d, CloneWatcher);
     }
+
     //----------------------------------------------------------------
     void swap(DMultiMatrix<T>& with)
     {
