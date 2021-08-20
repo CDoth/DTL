@@ -21,15 +21,21 @@ struct dec_alloced {~dec_alloced(){--__dmem_alloced;}};
 template <class T> inline size_t range(unsigned s) noexcept {return sizeof(T)*s;}
 template <class T> inline T*   get_mem(int s) noexcept {INC_ALLOCED; return reinterpret_cast<T*>(malloc(range<T>(s)));}
 template <class T> inline T*   get_zmem(int s) noexcept {INC_ALLOCED; return reinterpret_cast<T*>(calloc(range<T>(s), 1));}
-template <class T> inline void set_mem(T*&m, int s) noexcept {INC_ALLOCED; m = reinterpret_cast<T*>(malloc(range<T>(s)));}
+template <class T> inline void set_new_mem(T*&m, int s) noexcept {INC_ALLOCED; m = reinterpret_cast<T*>(malloc(range<T>(s)));}
+template <class T> inline void set_new_zmem(T*&m, int s) noexcept {INC_ALLOCED; m = reinterpret_cast<T*>(calloc(range<T>(s), 1));}
 
 template <class T> inline void reset_mem(T*&m, int s) noexcept {INC_REALLOCED(m); m = reinterpret_cast<T*>(realloc(m, range<T>(s)));}
 template <class T> inline T*   reget_mem(T* m, int s) noexcept {INC_REALLOCED(m); return reinterpret_cast<T*>(realloc(m,range<T>(s)));}
 
+template <class T> inline void set_mem(T*m, int value, int s) noexcept {memset(m, value, range<T>(s));}
 template <class T> inline void free_mem (T*&m) noexcept {if(m){DEC_ALLOCED; free(m); m = nullptr;}}
 template <class T> inline void zero_mem (T*m, int s) noexcept {if(m&&s) memset(m,0,range<T>(s));}
 template <class T> inline void clear_mem(T*m, int s) noexcept {zero_mem(m,s); free_mem(m);}
 template <class T> inline void copy_mem (T* _dst, const T* _src, int s) noexcept {if(_dst&&_src&&s) memcpy(_dst, _src, range<T>(s));}
+
+template <class T> inline void reset_zmem(T*&m, int s) noexcept {INC_REALLOCED(m); m = reinterpret_cast<T*>(realloc(m, range<T>(s))); zero_mem(m,s);}
+template <class T> inline T*   reget_zmem(T* m, int s) noexcept {INC_REALLOCED(m); m = reinterpret_cast<T*>(realloc(m, range<T>(s))); zero_mem(m,s); return m;}
+
 
 /*
  test block

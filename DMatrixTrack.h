@@ -6,14 +6,16 @@ template <class T>
 class DMatrixTrack
 {
 public:
-    DMatrixTrack() : _image(nullptr), _track(nullptr){}
+    DMatrixTrack() : _image(nullptr), _track(nullptr), _k_image(nullptr), _k_track(nullptr){}
     typedef T*  image_t;
     typedef T** track_t;
-    void set_image(T *data, int size);
     void set_image(const DMatrix<T>&);
+    void set_k_image(const DMatrix<T>&);
 
-    void make_forward_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h);
-    void make_back_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h);
+    void make_forward_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h,
+                            image_t kernel_image = nullptr, bool make_main = true);
+    void make_back_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h,
+                         image_t kernel_image = nullptr, bool make_main = true);
     void make_pooling_track(int w_in, int h_in, int pw, int ph, int step_w, int step_h, int stride_w, int stride_h);
 
     int out_w() const {return ow;}
@@ -21,44 +23,119 @@ public:
 
     const image_t image() const {return _image;}
     const track_t begin() const {return _track;}
-    const track_t end() const {return _track + _size;}
+    const track_t end() const {return _track + _track_size;}
+
+    const track_t k_begin() const {return _k_track;}
+    const track_t k_end() const {return _k_track + _k_track_size;}
 
 
-    int size() const {return _size;}
+    int size() const {return _track_size;}
+    int k_size() const {return _k_track_size;}
 
 private:
     void make_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h, bool make_back);    
+    void make_track2(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h, int stride_w, int stride_h, bool make_back,
+                     image_t kernel_image = nullptr, bool make_main = true);
 
     image_t _image;
     track_t _track;
-    int _size;
+
+    image_t _k_image;
+    track_t _k_track;
+    int _track_size;
+    int _k_track_size;
     T zero;
     int ow;
     int oh;
 public:
     int pooling_area;
 };
-template <class T>
-void DMatrixTrack<T>::set_image(T* data, int size)
+
+static int actual_track_size(int w_in, int h_in, int kw, int kh, int pw, int ph,  int step_w, int step_h, int stride_w, int stride_h)
 {
-    copy_mem(_image, data, size);
+    //Line full size:
+    int Lpw = w_in + 2 * pw;
+    int Lph = h_in + 2 * ph;
+
+    //Virtual kernel size (with stride):
+    int kw_v = (kw-1)*stride_w + kw;
+    int kh_v = (kh-1)*stride_h + kh;
+
+    //Out size:
+    int w_out = (w_in + 2*pw - kw_v)/step_w + 1;
+    int h_out = (h_in + 2*ph - kh_v)/step_h + 1;
+
+    //Kernel steps by one line:
+    int Npw = ((Lpw - kw_v)/step_w) + 1;
+    int Nph = ((Lph - kh_v)/step_h) + 1;
+
+    int Npw_right = (kw_v + ((w_out-1) * step_w)) - (pw + w_in)  ;
+    int Nph_bot = (kh_v + ((h_out-1) * step_h)) - (ph + h_in)  ;
+
+    if(Nph_bot < 0) Nph_bot = 0;
+    if(Npw_right < 0) Npw_right = 0;
+    //Multiplies by one line:
+    int Mw1 = Npw * kw;
+    int Mh1 = Nph * kh;
+
+
+
+    //Lines:
+    int Nsw0 = ((1+pw) * (pw + (step_w * (stride_w+1)) - 1))  /  (2 * (step_w * (stride_w+1)));
+    int Nsw1 = ((1+Npw_right) * (Npw_right + (step_w * (stride_w+1)) - 1))  /  (2 * (step_w * (stride_w+1)));
+
+    int Nsh0 = ((1+ph) * (ph + (step_h * (stride_h+1)) - 1))  /  (2 * (step_h * (stride_h+1)));
+    int Nsh1 = ((1+Nph_bot) * (Nph_bot + (step_h * (stride_h+1)) - 1))  /  (2 * (step_h * (stride_h+1)));
+
+
+    int F00 = Nsw0 * Nsh0;
+    int F01 = Nsw0 * Nsh1;
+    int F10 = Nsw1 * Nsh0;
+    int F11 = Nsw1 * Nsh1;
+    int F = F00 + F01 + F10 + F11;
+
+//    int top_line = Mh1 * Nsh0;
+//    int bot_line = Mh1 * Nsh1;
+//    int left_line = Mw1 * Nsw0;
+//    int right_line = Mw1 * Nsw1;
+    int top_line = Mw1 * Nsh0;
+    int bot_line = Mw1 * Nsh1;
+    int left_line = Mh1 * Nsw0;
+    int right_line = Mh1 * Nsw1;
+    int less = top_line + bot_line + left_line + right_line  - F;
+
+    int k_area = kw*kh;
+    int out_area = w_out * h_out;
+
+//    qDebug()<<"Nsw0:"<<Nsw0<<"Nsw1:"<<Nsw1<<"Nsh0:"<<Nsh0<<"Nsh1:"<<Nsh1<<"F:"<<F<<"res:"<<less;
+//    qDebug()<<"less:"<<less<<"top:"<<top_line<<"bot:"<<bot_line<<"left:"<<left_line<<"right:"<<right_line;
+//    qDebug()<<"Mh1:"<<Mh1<<"Nsh1:"<<Nsh1<<"Nph:"<<Nph<<"kh:"<<kh<<"Nph_bot:"<<Nph_bot;
+//    qDebug()<<"left:"<<left_line<<"Mw1:"<<Mw1<<"Nsw0:"<<Nsw0<<"Npw:"<<Npw;
+//    qDebug()<<"full track:"<<out_area * k_area<<"less:"<<less<<"actual track:"<<out_area * k_area - less<<"out:"<<w_out<<h_out;
+
+    return out_area * k_area - less;
 }
 template <class T>
-void DMatrixTrack<T>::set_image(const DMatrix<T>& m)
+void DMatrixTrack<T>::set_k_image(const DMatrix<T> &k)
+{
+    copy_mem(_k_image, k.constBegin(), k.area());
+}
+template <class T>
+void DMatrixTrack<T>::set_image(const DMatrix<T> &m)
 {
     copy_mem(_image, m.constBegin(), m.area());
 }
 template <class T>
 void DMatrixTrack<T>::make_forward_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h,
-                                         int stride_w, int stride_h)
+                                         int stride_w, int stride_h, image_t kernel_image, bool make_main)
 {
-    make_track(w_in, h_in, kw, kh, padding_w, padding_h, step_w, step_h, stride_w, stride_h, false);
+    make_track2(w_in, h_in, kw, kh, padding_w, padding_h, step_w, step_h, stride_w, stride_h, false, kernel_image, make_main);
 }
 template <class T>
 void DMatrixTrack<T>::make_back_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h,
-                                      int stride_w, int stride_h)
+                                      int stride_w, int stride_h, image_t kernel_image, bool make_main)
 {
-    make_track(w_in, h_in, kw, kh, padding_w, padding_h, step_w, step_h, stride_w, stride_h, true);
+    make_track2(w_in, h_in, kw, kh, padding_w, padding_h, step_w, step_h, stride_w, stride_h, true, kernel_image, make_main);
 }
 template <class T>
 void DMatrixTrack<T>::make_track(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h,
@@ -83,7 +160,7 @@ void DMatrixTrack<T>::make_track(int w_in, int h_in, int kw, int kh, int padding
 
     int image_size = b? out_size : in_size;
     int track_size = b? in_size*k_size : out_size*k_size; //original k size
-    _size = track_size;
+    _track_size = track_size;
     reset_mem(_image, image_size);
     reset_mem(_track, track_size);
     for(int i=0;i!=track_size;++i) _track[i] = &zero;
@@ -167,6 +244,116 @@ void DMatrixTrack<T>::make_track(int w_in, int h_in, int kw, int kh, int padding
     ow = w_out;
     oh = h_out;
 }
+template <class T>
+void DMatrixTrack<T>::make_track2(int w_in, int h_in, int kw, int kh, int padding_w, int padding_h, int step_w, int step_h,
+                                 int stride_w, int stride_h, bool make_back, image_t kernel_image, bool make_main)
+{
+    struct mpair{int w; int h;};
+    const mpair vksize = {(kw-1)*stride_w + kw, (kh-1)*stride_h + kh};
+
+    bool b = make_back;
+
+    padding_w = padding_w>=vksize.w?vksize.w-1:padding_w;
+    padding_h = padding_h>=vksize.h?vksize.h-1:padding_h;
+    step_w = step_w<=0?1:step_w;
+    step_h = step_h<=0?1:step_h;
+
+    int w_out = (w_in + 2*padding_w - vksize.w)/step_w + 1;
+    int h_out = (h_in + 2*padding_h - vksize.h)/step_h + 1;
+
+    int k_size = kw*kh;
+    int in_size = w_in*h_in;
+    int out_size = w_out*h_out;
+
+    int image_size = b? out_size : in_size;
+    int _shift = b? in_size : out_size;
+    _track_size = actual_track_size(w_in, h_in, kw, kh, padding_w, padding_h, step_w, step_h, stride_w, stride_h) + _shift;
+    _k_track_size = _track_size - _shift;
+    if(make_main) reset_mem(_image, image_size);
+    _k_image = kernel_image ? kernel_image : reget_mem(_k_image, k_size);
+    if(make_main) reset_mem(_track, _track_size);
+    reset_mem(_k_track, _k_track_size);
+
+    mpair mul;
+    mpair pad = {-padding_w, -padding_h};
+    mpair pos;
+    mpair shift;
+    mpair cross_area;
+    mpair left_blocks;
+    mpair right_blocks;
+    mpair local_pos;
+    const mpair lim = {w_in - vksize.w, h_in - vksize.h};
+
+
+    int INPUT_INDEX = 0;
+    int KERNEL_INDEX = 0;
+    int OUT_INDEX = 0;
+    int TRACK_I = 0;
+    int K_TRACK_I = 0;
+
+
+    for(int OUT_i=0;OUT_i!=w_out;++OUT_i)
+    {
+        for(int OUT_j=0;OUT_j!=h_out;++OUT_j)
+        {
+            pos.w = pad.w < 0 ? 0 : pad.w;
+            pos.h = pad.h < 0 ? 0 : pad.h;
+            shift.w = (pad.w - pos.w) * -1;
+            shift.h = (pad.h - pos.h) * -1;
+            cross_area.w = pad.w < 0 ? vksize.w + pad.w : vksize.w;
+            cross_area.w = pos.w > lim.w ? vksize.w - (pos.w - lim.w) : cross_area.w;
+
+            cross_area.h = pad.h < 0 ? vksize.h + pad.h : vksize.h;
+            cross_area.h = pos.h > lim.h ? vksize.h - (pos.h - lim.h) : cross_area.h;
+
+            mul.w = cross_area.w / (stride_w+1);
+            left_blocks.w = shift.w % (stride_w+1);
+            right_blocks.w = cross_area.w % (stride_w+1);
+            if(right_blocks.w > 0 && left_blocks.w <= right_blocks.w) ++mul.w;
+
+            mul.h = cross_area.h / (stride_h+1);
+            left_blocks.h = shift.h % (stride_h+1);
+            right_blocks.h = cross_area.h % (stride_h+1);
+            if(right_blocks.h > 0 && left_blocks.h <= right_blocks.h) ++mul.h;
+
+
+            shift.w /= (stride_w+1);
+            if(left_blocks.w > 0) ++shift.w;
+            shift.h /= (stride_h+1);
+            if(left_blocks.h > 0) ++shift.h;
+
+            for(int i=0;i!=mul.w;++i)
+            {
+                local_pos.w = i ? local_pos.w + stride_w+1 : left_blocks.w + pos.w;
+                for(int j=0;j!=mul.h;++j)
+                {
+                    local_pos.h = j ? local_pos.h + stride_h+1 : left_blocks.h + pos.h;
+
+                    INPUT_INDEX = local_pos.w * h_in + local_pos.h;
+                    KERNEL_INDEX = (i + shift.w) * kh + (j + shift.h);
+                    OUT_INDEX = OUT_i * h_out + OUT_j;
+
+
+
+                    if(make_main) _track[TRACK_I++] = &_image[b? OUT_INDEX:INPUT_INDEX];
+                    _k_track[K_TRACK_I++] = &_k_image[KERNEL_INDEX];
+
+
+                }
+            }
+            if(make_main) _track[TRACK_I++] = nullptr;
+            pad.h += step_h;
+        }
+        pad.w += step_w;
+        pad.h = -padding_h;
+        pos.h = 0;
+    }
+
+//    qDebug()<<"K TRACK I:"<<K_TRACK_I<<"K TRACK SIZE:"<<_k_track_size<<"TRACK SIZE:"<<_track_size;
+
+    ow = w_out;
+    oh = h_out;
+}
 
 template <class T>
 void DMatrixTrack<T>::make_pooling_track(int w_in, int h_in, int pw, int ph, int step_w, int step_h, int stride_w, int stride_h)
@@ -176,16 +363,12 @@ void DMatrixTrack<T>::make_pooling_track(int w_in, int h_in, int pw, int ph, int
 
     ow = (w_in + step_w) / (virtual_pw + step_w);
     oh = (h_in + step_h) / (virtual_ph + step_h);
-
-    const int w_lim = ow * virtual_pw + step_w;
-    const int h_lim = oh * virtual_ph + step_h;
-
     pooling_area = pw * ph;
 
     const int image_size = w_in * h_in;
-    _size = ow * oh * pooling_area;
+    _track_size = ow * oh * pooling_area;
     reset_mem(_image, image_size);
-    reset_mem(_track, _size);
+    reset_mem(_track, _track_size);
 
     int track_i = 0;
 //    qDebug()<<"vpw:"<<virtual_pw<<"vph:"<<virtual_ph;
@@ -256,16 +439,15 @@ void convolution2(const DMatrixTrack<T> &tr, const DMatrix<T> &kernel, DMatrix<T
     auto track_it = tr.begin();
     auto track_end = tr.end();
 
-    typedef typename DMatrix<T>::iterator iter;
-    typedef typename DMatrix<T>::const_iterator citer;
-    iter raw_out_it = raw_out.begin();
-    iter act_out_it = act_out.begin();
-    iter deract_out_it = deract_out.begin();
+    auto raw_out_it = raw_out.begin();
+    auto act_out_it = act_out.begin();
+    auto deract_out_it = deract_out.begin();
 
-    citer kernel_it = kernel.constBegin();
-    citer kernel_end = kernel.constEnd();
+    auto kernel_it = kernel.constBegin();
+    auto kernel_end = kernel.constEnd();
 
     T v = 0;
+    int i=0;
 //    qDebug()<<"===================================== CONVOLUTION: ============================";
     while(track_it != track_end)
     {
@@ -275,6 +457,7 @@ void convolution2(const DMatrixTrack<T> &tr, const DMatrix<T> &kernel, DMatrix<T
         {
 //            qDebug()<<"k:"<<*kernel_it<<"in:"<<**track_it<<" = "<<*kernel_it * **track_it;
             v += *kernel_it++ * **track_it++;
+            ++i;
         }
 //        qDebug()<<"-------- sum:"<< v << "prev:" << *raw_out_it;
         *raw_out_it += v;
@@ -282,41 +465,37 @@ void convolution2(const DMatrixTrack<T> &tr, const DMatrix<T> &kernel, DMatrix<T
         *deract_out_it = _deract(*raw_out_it);
         ++raw_out_it; ++act_out_it; ++deract_out_it;
     }
+//    qDebug()<<"convolution2():"<<i;
 }
-/*
 template <class T>
-void convolution2_complex(const DMatrixTrack<T> &tr, const DMatrix<T> &kernel, DMatrix<complex_value_type<T>> &out, DMatrix<T> &deract_out,
-                  T (*_act)(T), T (*_deract)(T))
-{
-    auto track_it = tr.begin();
-    auto track_end = tr.end();
+void convolution3(const DMatrixTrack<T> &track, DMatrix<T> &raw_out)
+{ 
+//    qDebug()<<"convolution3";
+//    printf("convolution3\n");
+    auto track_it = track.begin();
+    auto track_end = track.end();
 
-    auto out_it = out.begin();
-    auto deract_out_it = deract_out.begin();
-
-    auto kernel_it = kernel.constBegin();
-    auto kernel_end = kernel.constEnd();
+    auto raw_out_it = raw_out.begin();
+    auto kernel_it = track.k_begin();
 
     T v = 0;
-//    qDebug()<<"===================================== CONVOLUTION: ============================";
     while(track_it != track_end)
     {
         v = 0;
-        kernel_it = kernel.constBegin();
-        while(kernel_it != kernel_end)
+        while(*track_it)
         {
-//            qDebug()<<"k:"<<*kernel_it<<"in:"<<**track_it<<" = "<<*kernel_it * **track_it;
-            v += *kernel_it++ * **track_it++;
+//            qDebug()<<"k:"<<**kernel_it<<"input:"<<**track_it<<"res:"<<**kernel_it * **track_it;
+
+//            printf("in: %d k: %d res: %d\n", **track_it, **kernel_it, **kernel_it * **track_it);
+            v += **kernel_it++ * **track_it++;
         }
-//        qDebug()<<"-------- sum:"<< v << "prev:" << *raw_out_it;
-        (*out_it).raw = v;
-        (*out_it).sig = _act(v);
-        *deract_out_it = _deract(v);
-        ++out_it; ++deract_out_it;
+//        qDebug()<<"sum:"<<v<<"---------------------";
+//        printf("sum: %d --------------------\n", v);
+        *raw_out_it += v;
+        ++raw_out_it;
+        ++track_it;
     }
 }
-*/
-
 template <class T>
 void back_convolution(const DMatrixTrack<T> &out_error_track, const DMatrix<T> &kernel, DMatrix<T> &in_error, const DMatrix<T> &raw_in, DMatrix<T> &kernel_delta)
 {
@@ -365,25 +544,95 @@ void back_convolution2(const DMatrixTrack<T> &out_error_track, const DMatrix<T> 
     auto input_it = input.constBegin();
 
 //    qDebug()<<"===================================== BACK CONVOLUTION: ============================";
+    T v = 0;
+    int i=0;
     while(track_it != track_end)
     {
+        v = 0;
         kernel_it = kernel.constBegin();
-        kernel_delta_it = kernel_delta.begin();
+//        kernel_delta_it = kernel_delta.begin();
         while(kernel_it != kernel_end)
         {
 //            qDebug()<<"out error:"<<**track_it<<"k:"<<*kernel_it<<"in error:"<<**track_it * *kernel_it<<"input:"<<*input_it<<"rate:"<<rate
 //                   <<"delta w:"<<**track_it * *input_it * rate;
 
-            *out_it += **track_it * *kernel_it;
-            *kernel_delta_it += **track_it * *input_it * rate;
+//            v += **track_it * *kernel_it;
+//            *kernel_delta_it += **track_it * *input_it * rate;
+
+//            ++kernel_delta_it;
+            ++kernel_it;
+            ++track_it;
+            ++i;
+        }
+//        qDebug()<<"-----------";
+
+        *out_it++ = v;
+        ++input_it;
+    }
+
+//    qDebug()<<"back_convolution2()"<<i;
+
+}
+template <class T>
+void back_convolution3(const DMatrixTrack<T> &out_error_track, DMatrixTrack<T> &kernel_delta_track,
+                       DMatrix<T> &in_error, const DMatrix<T> &input, T &rate)
+{
+    auto track_it = out_error_track.begin();
+    auto track_end = out_error_track.end();
+    auto out_it = in_error.begin();
+
+    auto kernel_it = out_error_track.k_begin();
+    auto kernel_delta_it = kernel_delta_track.k_begin();
+
+    auto input_it = input.constBegin();
+
+//    qDebug()<<"===================================== BACK CONVOLUTION: ============================";
+    T v = 0;
+    while(track_it != track_end)
+    {
+        v = 0;
+        while(*track_it)
+        {
+//            qDebug()<<"out error:"<<**track_it<<"k:"<<*kernel_it<<"in error:"<<**track_it * *kernel_it<<"input:"<<*input_it<<"rate:"<<rate
+//                   <<"delta w:"<<**track_it * *input_it * rate;
+
+            v += **track_it * **kernel_it;
+            **kernel_delta_it += **track_it * *input_it * rate;
 
             ++kernel_delta_it;
             ++kernel_it;
             ++track_it;
         }
-//        qDebug()<<"-----------";
-        ++out_it;
+        *out_it++ = v;
         ++input_it;
+        ++track_it;
+    }
+}
+template <class T>
+void back_convolution4(const DMatrixTrack<T> &out_error_track, DMatrix<T> &in_error)
+{
+    auto track_it = out_error_track.begin();
+    auto track_end = out_error_track.end();
+    auto out_it = in_error.begin();
+    auto kernel_it = out_error_track.k_begin();
+
+    qDebug()<<"===================================== BACK CONVOLUTION: ============================";
+    T v = 0;
+    while(track_it != track_end)
+    {
+        v = 0;
+        while(*track_it)
+        {
+            qDebug()<<"out error:"<<**track_it<<"k:"<<**kernel_it<<"in error:"<<**track_it * **kernel_it;
+
+            v += **track_it * **kernel_it;
+
+            ++kernel_it;
+            ++track_it;
+        }
+        qDebug()<<"------ v:"<<v;
+        *out_it++ = v;
+        ++track_it;
     }
 }
 template <class T>
@@ -582,3 +831,4 @@ void print_matrix(const DMatrix<int>& m, const char* message = nullptr)
     print_matrix(out, "out");
 
  */
+

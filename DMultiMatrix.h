@@ -31,8 +31,7 @@ public:
         if((data_size = d.data_size))
         {
             collection.reserve(d.collection.size());
-            set_mem(data, data_size);
-            zero_mem(data, data_size);
+            set_new_zmem(data, data_size);
             auto it = data;
             auto src_mtx = d.collection.constBegin();
             auto src_e = d.collection.constEnd();
@@ -47,8 +46,8 @@ public:
     }
     ~DMultiMatrixData()
     {
-        if(!placed)
-            free_mem(data);
+//        if(!placed)
+//            free_mem(data);
     }
 
     typedef typename DArray<DMatrix<T>>::iterator iterator;
@@ -62,6 +61,8 @@ public:
     int width;
     int height;
     int placed;
+
+    const char *__name; //debug
 };
 template <class T>
 class DMultiMatrix
@@ -100,13 +101,19 @@ public:
     //----------------------------------------------------------------
     ~DMultiMatrix()
     {
-        if( w->pull() == 0) {delete data(); delete w;}
+//        if( w->pull() == 0) {delete data(); delete w;}
     }
 
+    int area() const {return data()->width * data()->height;}
     int size() const {return data()->collection.size();}
+    int dataSize() const {return data()->width * data()->height * data()->collection.size();}
     int width() const {return data()->width;}
     int height() const {return data()->height;}
-    int matrix_size() const {return data()->width * data()->height;}
+
+    void setName(const char *name){data()->__name = name;}
+    const char *getName(){return data()->__name;}
+
+
 
     DMatrix<T>& operator[](int i){detach();return data()->collection[i];}
     const DMatrix<T>& operator[](int i) const {return data()->collection[i];}
@@ -116,6 +123,40 @@ public:
     typedef typename DMultiMatrixData<T>::data_iterator data_iterator;
     typedef typename DMultiMatrixData<T>::const_data_iterator const_data_iterator;
 
+
+    void fill(const T& v)
+    {
+        auto b = begin();
+        auto e = end();
+        while(b!=e) (*b++).fill(v);
+    }
+    bool operator==(const DMultiMatrix<T> &mm) const
+    {
+        if(mm.size() == size() && mm.width() == width() && mm.height() == height())
+        {
+            auto b = mm.constBegin();
+            auto _b = constBegin();
+            auto _e = constEnd();
+            int i=0;
+            while(_b!=_e)
+            {
+                if(   !((*_b++) == (*b++))    )
+                {
+                    printf("DMultiMatrix: operator==(): matrix diff: %d\n", i);
+                    return false;
+                }
+                ++i;
+            }
+
+//            printf("DMultiMatrix: operator==(): equal\n");
+            return true;
+        }
+        else
+        {
+            printf("DMultiMatrix: operator==(): MM size diff\n");
+            return false;
+        }
+    }
     iterator begin() {detach(); return data()->collection.begin();}
     iterator end() {detach(); return data()->collection.end();}
     data_iterator dataBegin() {detach(); return data()->data;}

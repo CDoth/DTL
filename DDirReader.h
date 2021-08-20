@@ -7,63 +7,162 @@
 #include <fstream>
 
 size_t get_file_size(const char* path);
-class DirReader
+void getShortSize(size_t bytes, char *shortSizeBuffer, int bufferSize);
+std::string getBaseName(const std::string &name_with_extension);
+///
+/// \brief read_file
+/// Alloced buffer and write all data from file to buffer. Caller should free buffer.
+/// \param path
+/// Path of file.
+/// \param size
+/// Size of data to read by file.
+/// Set it to '0' or to negative value to ignore it and read all file.
+/// \param error_code
+/// Set error code to '*error_code':
+/// -1: Bad (NULL) pointer to 'path'
+/// -2: Wrong path (can't open file or zero file size)
+/// -3: Fail of alloc memory for buffer
+/// -4: Read '0' bytes
+/// Set NULL to ingore this.
+/// \return
+/// Pointer to buffer with file data or NULL if error occur (read 'error_code' description)
+///
+uint8_t* read_file(const char *path, size_t size, int *error_code, size_t *readed); //alloc new memory, use free_file_data() (or free_mem()) fo free it
+///
+/// \brief free_file_data
+/// Free buffer by 'get_file_data' function. Wrapper of free_mem().
+/// \param buffer
+/// Pointer to data
+///
+void free_file_data(uint8_t *buffer);
+
+int path_correct(std::string &path);
+int path_cut_last_section(std::string &path);
+int path_is_default(const std::string &path);
+std::string path_get_last_section(const std::string &path);
+
+
+//#define DDIR_STORE_FILE_SIZE
+class Directory;
+class DDirReader;
+class FileDescriptor
 {
 public:
-    DirReader();
-    DirReader(const char* prefix);
+    FileDescriptor();
+    ~FileDescriptor();
 
-    typedef std::string string_t;
+    std::string getStdName() const;
+    std::string getStdPath() const;
+    const char* getName() const;
+    const char* getPath() const;
+    int getSize() const;
 
-    struct dir;
-    struct file_desc
-    {
-    private:
-        string_t _name;
-        size_t   _size;
-        dir* pdir;
-
-    public:
-        file_desc() : _size(0), pdir(nullptr) {}
-        file_desc(const char* name, size_t size, dir* parent) : _name(name), _size(size), pdir(parent) {}
-        string_t name() const;
-        string_t path() const;
-        size_t size() const;
-    };
-
-    struct dir
-    {
-        string_t full_path;
-        string_t name;
-        int size;
-
-        typedef std::vector<file_desc>::const_iterator iterator;
-        std::vector<file_desc> file_list;
-
-        iterator begin() const {return file_list.cbegin();}
-        iterator end() const {return file_list.cend();}
-    };
-
-    void set_prefix(const char* prefix);
-    void enable_prefix();
-    void disable_prefix();
-    const dir* add_dir(const char* path, const char* specific_name = nullptr);
-    const dir* get_dir_by_path(const char* full_path);
-    const dir* get_dir_by_name(const char* name);
-
-    typedef std::vector<dir*>::const_iterator dir_iterator;
-    dir_iterator begin() const;
-    dir_iterator end() const;
-    int size() const;
-public:
-    dir* current;
-    string_t prefix;
-    bool use_prefix;
-    std::vector<dir*> directories;
+    Directory* getRoot();
+    const Directory* getRoot() const;
+private:
+    std::string path;
+    std::string name;
+    size_t size;
+    Directory *root;
+    friend class Directory;
 };
+class Directory
+{
+public:
+    typedef std::vector<FileDescriptor>::iterator FileIterator;
+    typedef std::vector<FileDescriptor>::const_iterator ConstFileIterator;
 
+    FileIterator beginFiles();
+    ConstFileIterator constBeginFiles() const;
+    FileIterator endFiles();
+    ConstFileIterator constEndFiles() const;
+
+    std::string getStdPath() const;
+    std::string getStdName() const;
+    const char* getPath() const;
+    const char* getName() const;
+    size_t size() const;
+    FileDescriptor& getFile(int index);
+    const FileDescriptor& getFile(int index) const;
+
+    Directory();
+    ~Directory();
+    friend class DDirReader;
+private:
+    void addFile(const char *name);
+    std::vector<FileDescriptor> list;
+    std::string full_path;
+    std::string name;
+};
+class DDirReader
+{
+public:
+    DDirReader();
+    ~DDirReader();
+
+    Directory* open(const char *path, const char *specific_name = nullptr);
+    int renew(const char *path_or_name);
+
+    typedef std::vector<Directory*>::iterator DirectoryIterator;
+    typedef std::vector<Directory*>::const_iterator ConstDirectoryIterator;
+    DirectoryIterator begin();
+    ConstDirectoryIterator constBegin() const;
+
+    DirectoryIterator end();
+    ConstDirectoryIterator constEnd() const;
+    size_t size() const;
+
+//    DLogs::DLogContext* getLogContext();
+//    const DLogs::DLogContext* getLogContext() const;
+
+    Directory* getDirectory(size_t index);
+    const Directory* getDirectory(size_t index) const;
+public:
+    std::vector<Directory*> directories;
+//    DLogs::DLogContext log_context;
+    void init_log_context();
+};
 /*
- test block
+    class _find_file_f
+    {
+    public:
+        _find_file_f(const char *key, bool with_ext, bool by_name) : _key (key), _with_ext(with_ext), _by_name(by_name) {}
+        bool operator()(const file_desc &fd) const
+        {
+            if(_with_ext)
+            {
+                if(_by_name)
+                    return fd.name == _key;
+                else
+                    return fd.path() == _key;
+            }
+            else
+            {
+                if(_by_name)
+                    return getBaseName(fd.name) == _key;
+                else
+                    return getBaseName(fd.path()) == _key;
+            }
+        }
+    private:
+        const char *_key;
+        bool _with_ext;
+        bool _by_name;
+    };
+inline int check_file(const DDirReader::dir *_dir, const std::string &file_name)
+{
+    for(size_t i=0;i!=_dir->file_list.size();++i)
+    {
+        if(_dir->file_list[i].name == file_name)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+*/
+
+/* //test block
     DirReader dr;
     dr.set_prefix("/root");
     auto dir = dr.add_dir("DTL");

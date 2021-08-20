@@ -1,7 +1,7 @@
 #ifndef DMETATYPE_H
 #define DMETATYPE_H
 #include <algorithm>
-#include <QDebug>
+//#include <QDebug>
 
 template <class T>
 class DMetaType

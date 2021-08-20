@@ -1,4 +1,15 @@
 #include "DDirReader.h"
+#include <algorithm>
+#include "dmem.h"
+
+#include <QDebug>
+
+#define DDIR_LOG_IT(...) DLM_CLOG(log_context.header_set_message("default"), __VA_ARGS__);
+#define DDIR_BADALLOC(...) DLM_CLOG(log_context.header_set_message("Can't alloc memory for"), __VA_ARGS__);
+#define DDIR_BADPOINTER(...) DLM_CLOG(log_context.header_set_message("Bad pointer to"), __VA_ARGS__);
+#define DDIR_BADVALUE(...) DLM_CLOG(log_context.header_set_message("Wrong value in"), __VA_ARGS__);
+#define DDIR_FUNCFAIL(...) DLM_CLOG(log_context.header_set_message("Function fail"), __VA_ARGS__);
+
 size_t get_file_size(const char* path)
 {
     std::ifstream f(path, std::ios::in | std::ios::binary);
@@ -9,112 +20,416 @@ size_t get_file_size(const char* path)
     }
     else return 0;
 }
-DirReader::string_t DirReader::file_desc::name() const
+void getShortSize(size_t bytes, char *shortSizeBuffer, int bufferSize)
 {
-    return _name;
+    if(bufferSize <= 0) return;
+    double v = 0.0;
+    for(;;)
+    {
+        int kb = bytes/ 1024;  bytes %= 1024; if(!kb){v = bytes; snprintf(shortSizeBuffer, bufferSize, "%.2f bytes", v);  break;}
+        int mb = kb / 1024;    kb %= 1024;    if(!mb){v = kb + (double)bytes/1024; snprintf(shortSizeBuffer, bufferSize, "%.2f Kb", v);  break;}
+        int gb = mb / 1024;    mb %= 1024;    if(!gb){v = mb + (double)kb/1024; snprintf(shortSizeBuffer, bufferSize, "%.2f Mb", v);  break;}
+        int tb = gb / 1024;    gb %= 1024;    if(!tb){v = gb + (double)mb/1024; snprintf(shortSizeBuffer, bufferSize, "%.2f Gb", v); break;}
+        v = tb + (double)gb/1024; snprintf(shortSizeBuffer, bufferSize, "%.2f Tb", v);   break;
+    }
 }
-DirReader::string_t DirReader::file_desc::path() const
+std::string getBaseName(const std::string &name_with_extension)
 {
-    return pdir->full_path + _name;
+    auto name = name_with_extension;
+    auto b = name.begin();
+    auto e = name.end();
+    int pos = 0;
+    while(b != e)
+    {
+        if(*b++ == '.')
+        {
+            return name.substr(0, pos);
+        }
+        ++pos;
+    }
+    return name;
 }
-size_t DirReader::file_desc::size() const
+uint8_t *read_file(const char *path, size_t size, int *error_code, size_t *readed)
 {
-    return _size;
+#define WRITE_ERROR(code) \
+    if(error_code) *error_code = code;
+
+    if(path == NULL)
+    {
+        WRITE_ERROR(-1);
+        return NULL;
+    }
+    FILE *f = fopen(path, "rb");
+    if(f == NULL)
+    {
+        WRITE_ERROR(-2);
+        return NULL;
+    }
+    size_t file_size = get_file_size(path);
+    if(file_size == 0)
+    {
+        WRITE_ERROR(-2);
+        return NULL;
+    }
+
+    if(size > 0 && size < file_size)
+        file_size = size;
+
+    uint8_t *buffer = get_mem<uint8_t>(file_size);
+    if(buffer == NULL)
+    {
+        WRITE_ERROR(-3);
+        return NULL;
+    }
+    size_t read = fread(buffer, 1, file_size, f);
+    if(read == 0 || read < file_size)
+    {
+        WRITE_ERROR(-4);
+        free_mem(buffer);
+        return NULL;
+    }
+    if(readed) *readed = read;
+    fclose(f);
+    return buffer;
+
+#undef WRITE_ERROR
 }
-DirReader::DirReader()
+void free_file_data(uint8_t *buffer)
 {
-    use_prefix = false;
+    free_mem(buffer);
 }
-DirReader::DirReader(const char* _prefix)
+int path_correct(std::string &path)
 {
-    prefix = _prefix;
-    use_prefix = true;
+    char sl = '/';
+    for(size_t i=0;i!=path.size();++i)
+    {
+        if(path[i] == '/')
+        {
+            sl = '/';
+            break;
+        }
+        if(path[i] == '\\')
+        {
+            sl = '\\';
+            break;
+        }
+    }
+    if(path.back() != sl) path.push_back(sl);
+    return path.size();
 }
-int DirReader::size() const
+int path_cut_last_section(std::string &path)
+{
+    std::string::iterator iter = path.end();
+    std::string::iterator b = path.begin();
+    std::string::iterator e = path.end();
+    while(b != e)
+    {
+        if(*b == '/' || *b == '\\')
+            iter = b;
+        ++b;
+    }
+    path.erase(iter+1, e);
+    return path.size();
+}
+int path_is_default(const std::string &path)
+{
+    std::string::const_iterator b = path.cbegin();
+    std::string::const_iterator e = path.cend();
+    while(b != e)
+    {
+        if(*b == '/' || *b == '\\') return 1;
+        ++b;
+    }
+    return 0;
+}
+std::string path_get_last_section(const std::string &path)
+{
+    std::string::const_iterator iter = path.end();
+    std::string::const_iterator b = path.begin();
+    std::string::const_iterator e = path.end();
+    while(b != e)
+    {
+        if(*b == '/' || *b == '\\')
+            iter = b;
+        ++b;
+    }
+
+    return std::string(iter+1, e);
+}
+
+//========================================== FileDescriptor
+FileDescriptor::FileDescriptor()
+{
+
+}
+FileDescriptor::~FileDescriptor()
+{
+
+}
+std::string FileDescriptor::getStdName() const
+{
+    return name;
+}
+std::string FileDescriptor::getStdPath() const
+{
+    return path;
+}
+const char *FileDescriptor::getName() const
+{
+    return name.c_str();
+}
+const char *FileDescriptor::getPath() const
+{
+    return path.c_str();
+}
+int FileDescriptor::getSize() const
+{
+    return size;
+}
+Directory *FileDescriptor::getRoot()
+{
+    return root;
+}
+const Directory *FileDescriptor::getRoot() const
+{
+    return root;
+}
+//========================================== Directory
+void Directory::addFile(const char *name)
+{
+    if(name)
+    {
+        FileDescriptor file;
+        file.name = name;
+        file.path = full_path + file.name;
+        file.root = this;
+        file.size = get_file_size(file.path.c_str());
+        list.push_back(file);
+    }
+}
+Directory::FileIterator Directory::beginFiles()
+{
+    return list.begin();
+}
+Directory::ConstFileIterator Directory::constBeginFiles() const
+{
+    return list.cbegin();
+}
+Directory::FileIterator Directory::endFiles()
+{
+    return list.end();
+}
+Directory::ConstFileIterator Directory::constEndFiles() const
+{
+    return list.cend();
+}
+
+std::string Directory::getStdPath() const
+{
+    return full_path;
+}
+std::string Directory::getStdName() const
+{
+    return name;
+}
+const char *Directory::getPath() const
+{
+    return full_path.c_str();
+}
+const char *Directory::getName() const
+{
+    return name.c_str();
+}
+size_t Directory::size() const
+{
+    return list.size();
+}
+FileDescriptor &Directory::getFile(int index)
+{
+    return list[index];
+}
+const FileDescriptor &Directory::getFile(int index) const
+{
+    return list[index];
+}
+Directory::Directory()
+{
+
+}
+Directory::~Directory()
+{
+
+}
+//========================================== DDirReader
+DDirReader::DDirReader()
+{
+}
+DDirReader::~DDirReader()
+{
+    auto b = begin();
+    auto e = end();
+    while( e != b ) delete (*--e);
+}
+size_t DDirReader::size() const
 {
     return directories.size();
 }
-void DirReader::set_prefix(const char* _prefix)
+
+Directory *DDirReader::getDirectory(size_t index)
 {
-    prefix = _prefix;
-    use_prefix = true;
+    if(index >= 0 && index < directories.size())
+        return directories[index];
+    return NULL;
 }
-void DirReader::enable_prefix()
+const Directory *DDirReader::getDirectory(size_t index) const
 {
-    use_prefix = true;
+    if(index >= 0 && index < directories.size())
+        return directories[index];
+    return NULL;
 }
-void DirReader::disable_prefix()
+void DDirReader::init_log_context()
 {
-    use_prefix = false;
+//    log_context = DLogs::DLogContext("DDirReaderLogs");
+//    log_context.parse_console(true);
+//    DLogs::DLogContext::header_resolution hr;
+//    hr.cdate = false;
+//    hr.fname = true;
+//    hr.ltime = false;
+//    hr.mnumb = true;
+//    hr.rtime = false;
+//    hr.sname = true;
+//    log_context.header_set(hr);
 }
-const DirReader::dir* DirReader::add_dir(const char* _path, const char* specific_name)
+Directory* DDirReader::open(const char* _path, const char* specific_name)
 {
-    string_t name;
-    string_t full_path;
+    if(_path == NULL)
+    {
+//        DDIR_BADPOINTER("Directory path");
+        return NULL;
+    }
+    std::string name;
+    std::string full_path;
     DIR *DIRECTORY = nullptr;
     struct dirent *ent = nullptr;
     //----------------------------------------------------------- Set name and full path:
     name = specific_name ? specific_name : _path;
-
-    if(use_prefix)
-        full_path = prefix + "/" + _path + "/";
-    else
-        full_path = _path;
+    full_path = _path;
+    path_correct(full_path);
     //----------------------------------------------------------- Check directories with same path:
     if(directories.size())
     {
-        dir_iterator d_it = directories.begin();
-        dir_iterator d_end = directories.end();
+        DirectoryIterator d_it = begin();
+        DirectoryIterator d_end = end();
         while(d_it != d_end)
         {
-            if( (*d_it)->full_path == full_path)
+            if( (*d_it)->getStdPath() == full_path)
             {
-                printf("DirReader::add_dir() : Directory with this path (%s) already open\n", full_path.c_str());
+//                DDIR_LOG_IT("Directory with path [%s] already open", full_path.c_str());
+                renew(full_path.c_str());
                 return *d_it;
             }
-            d_it++;
+            ++d_it;
         }
     }
+
     //----------------------------------------------------------- Check directory to open:
     DIRECTORY = opendir(full_path.c_str());
-    if(!DIRECTORY)
+    if(DIRECTORY == NULL)
     {
-        printf("DirReader::add_dir() Error: Can't open directory (%s), bad path\n", full_path.c_str());
-        return nullptr;
+//        DDIR_LOG_IT("Can't open directory [%s], bad path", full_path.c_str());
+        return NULL;
     }
-    //----------------------------------------------------------- Read names in current directory (except "." and ".." names):
-    dir* new_dir = nullptr;
-    new_dir = new dir;
 
-    std::vector<string_t> pathes;
-    std::vector<string_t> names;
-    std::vector<file_desc> fl;
-    int c = 0;
+    //----------------------------------------------------------- Read names in current directory (except "." and ".." names):
+    Directory *directory = new Directory;
+    if(directory == NULL)
+    {
+//        DDIR_BADALLOC("new directory");
+        return NULL;
+    }
+
+    directory->name = name;
+    directory->full_path = full_path;
     while( (ent = readdir(DIRECTORY)) )
     {
         if( !(!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) )
         {
-            size_t s = get_file_size( (full_path + '/' + ent->d_name).c_str() );
+#ifdef DDIR_STORE_FILE_SIZE
+            size_t s = get_file_size( (full_path + ent->d_name).c_str() );
             if(s) fl.push_back({ent->d_name, s, new_dir}), ++c;
+#else
+            directory->addFile(ent->d_name);
+#endif
         }
     }
     //----------------------------------------------------------- Create, init and push new dir struct:
 
-    if(!new_dir)
+    directories.push_back(directory);
+    return directory;
+}
+int DDirReader::renew(const char *path_or_name)
+{
+    std::string key = path_or_name;
+    Directory *target = NULL;
+    DIR *DIRECTORY = NULL;
+    struct dirent *ent = NULL;
+
+    if(directories.size())
     {
-        printf("DirReader::add_dir() Error: Bad malloc result\n");
-        return nullptr;
+        DirectoryIterator d_it = begin();
+        DirectoryIterator d_end = end();
+        while(d_it != d_end)
+        {
+            if( (*d_it)->getStdPath() == key || (*d_it)->getStdName() == key)
+            {
+                target = *d_it;
+            }
+            ++d_it;
+        }
+    }
+    if(target)
+    {
+        DIRECTORY = opendir(target->full_path.c_str());
+        if(DIRECTORY == NULL)
+        {
+//            DDIR_LOG_IT("Can't open directory [%s], bad path", target->full_path.c_str());
+            return 0;
+        }
+        size_t old_size = target->size();
+        target->list.clear();
+
+        while( (ent = readdir(DIRECTORY)) )
+        {
+            if( !(!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) )
+            {
+                target->addFile(ent->d_name);
+            }
+        }
+        return target->size() - old_size;
     }
 
-    new_dir->name = name;
-    new_dir->full_path = full_path;
-    new_dir->size = c;
-    new_dir->file_list = fl;
-
-    directories.push_back(new_dir);
-    return new_dir;
+    return 0;
 }
-const DirReader::dir* DirReader::get_dir_by_path(const char* _full_path)
+DDirReader::DirectoryIterator DDirReader::begin()
+{
+    return directories.begin();
+}
+DDirReader::ConstDirectoryIterator DDirReader::constBegin() const
+{
+    return directories.cbegin();
+}
+DDirReader::DirectoryIterator DDirReader::end()
+{
+    return directories.end();
+}
+DDirReader::ConstDirectoryIterator DDirReader::constEnd() const
+{
+    return directories.cend();
+}
+
+
+/*
+DDirReader::dir_p DDirReader::get_dir_by_path(const char* _full_path)
 {
     dir* lfr_dir = nullptr;
     if(directories.size())
@@ -123,7 +438,7 @@ const DirReader::dir* DirReader::get_dir_by_path(const char* _full_path)
         dir_iterator d_end = directories.end();
         while(d_it != d_end)
         {
-            if( (*d_it)->full_path == _full_path)
+            if( (*d_it)->_full_path == _full_path)
             {
                 lfr_dir = *d_it;
                 break;
@@ -139,7 +454,7 @@ const DirReader::dir* DirReader::get_dir_by_path(const char* _full_path)
     }
     return lfr_dir;
 }
-const DirReader::dir* DirReader::get_dir_by_name(const char* _name)
+DDirReader::dir_p DDirReader::get_dir_by_name(const char* _name)
 {
     dir* lfr_dir = nullptr;
     if(directories.size())
@@ -148,7 +463,7 @@ const DirReader::dir* DirReader::get_dir_by_name(const char* _name)
         dir_iterator d_end = directories.end();
         while(d_it != d_end)
         {
-            if( (*d_it)->name == _name)
+            if( (*d_it)->_name == _name)
             {
                 lfr_dir = *d_it;
                 break;
@@ -164,11 +479,63 @@ const DirReader::dir* DirReader::get_dir_by_name(const char* _name)
     }
     return lfr_dir;
 }
-DirReader::dir_iterator DirReader::begin() const
+
+DDirReader::dir_p DDirReader::get_dir_by_index(int index)
 {
-    return directories.begin();
+    return directories[index];
 }
-DirReader::dir_iterator DirReader::end() const
+DDirReader::dir_p DDirReader::operator[](int index)
 {
-    return directories.end();
+    return directories[index];
 }
+DDirReader::dir_p DDirReader::get_last_dir()
+{
+    return directories.back();
+}
+DDirReader::dir::iterator DDirReader::dir::find_file_by_name(const char *name, int with_extension) const //accelerate it
+{
+//    if(name == NULL) return end();
+//    return std::find_if(file_list.begin(), file_list.end(), DDirReader::_find_file_f(name, bool(with_extension), true));
+    for(size_t i=0;i!=file_list.size();++i)
+    {
+        if(file_list[i].name == name)
+        {
+            return file_list.begin() + i;
+        }
+    }
+    return file_list.end();
+}
+bool DDirReader::dir::find_file_by_name(DDirReader::string_t name, int with_extension) const
+{
+    for(size_t i=0;i!=file_list.size();++i)
+    {
+        if(file_list[i].name == name)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+DDirReader::dir::iterator DDirReader::dir::find_file_by_path(const char *path, int with_extension) const
+{
+    if(path == NULL) return end();
+    return std::find_if(file_list.begin(), file_list.end(), DDirReader::_find_file_f(path, bool(with_extension), false));
+}
+
+*/
+
+
+#undef DDIR_LOG_IT
+#undef DDIR_BADALLOC
+#undef DDIR_BADPOINTER
+#undef DDIR_BADVALUE
+#undef DDIR_FUNCFAIL
+
+
+
+
+
+
+
+
+

@@ -1,7 +1,8 @@
 #include "DLexeme.h"
+#include <daran.h>
 
 #include <QDebug>
-DLexeme::DLexeme()
+void DLexeme::_init_deafault_context()
 {
     default_context = get_mem<read_context>(1);
     default_context->min = 0;
@@ -10,6 +11,17 @@ DLexeme::DLexeme()
     default_context->use_max = false;
     default_context->unique = false;
     default_context->max_size = 0;
+}
+DLexeme::DLexeme()
+{
+    _init_deafault_context();
+    inner_rule = NULL;
+}
+DLexeme::DLexeme(DLexeme::raw rule)
+{
+    _init_deafault_context();
+    inner_rule = NULL;
+    set_rule(rule);
 }
 DLexeme::~DLexeme()
 {
@@ -35,31 +47,42 @@ bool DLexeme::base_equal(const lexeme &l, DLexeme::raw sample)
 {
     return strlen(sample) == (size_t)l.size && buffer_compare(l.begin, sample, l.size);
 }
-void DLexeme::print_lexeme(const lexeme &l, bool show_size)
-{
-    auto b = l.begin;
-    while( b != l.end ) std::cout << *b++;
-    if(show_size) std::cout << '(' << l.size << ')';
-    std::cout << std::endl;
-}
+
 DLexeme::lexeme DLexeme::base(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special)
 {
     lexeme l = share_null;
     if(v == nullptr) return l;
     if(!special) special = " ";
-    for(;*v!='\0' && v != end;++v)
+    void *start = (void*)v;
+//    qDebug()<<"base::: start:"<<start<<"end:"<<(void*)end;
+    for(;v != end;++v)
     {
+        if(end == nullptr && *v == '\0')
+        {
+//            qDebug()<<"end in nullptr and sym is term zero";
+            break;
+        }
+
+//        qDebug()<<"base: sym:"<<*v<<"start:"<<start;
         if(is_special(*v, special))
         {
-            if(l.begin)break;
+            if(l.begin)
+            {
+//                qDebug()<<"----sym:"<<*v<<"is special";
+                break;
+            }
         }
         else
         {
             if(!l.begin) l.begin = v;
             ++l.size;
         }
+//        if(*(v+1) == '\0') qDebug()<<"next sym is term 0";
+//        if((v+1) == end) qDebug()<<"next sym is END";
     }
     l.end = l.begin + l.size;
+
+//    qDebug()<<"return lexeme:"<<(void*)l.begin;
     return l;
 }
 size_t DLexeme::sym_base_len(DLexeme::raw v, DLexeme::raw end, char c)
@@ -83,6 +106,26 @@ DLexeme::lexeme DLexeme::strict_sym_base(DLexeme::raw v, DLexeme::raw end, char 
         ++v;
     }
     return share_null;
+}
+DLexeme::lexeme DLexeme::sym_unspecial(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special)
+{
+    if(!special) special = " ";
+    while(*v != '\0' && v != end)
+    {
+        if(!is_special(*v, special)) return {v, v+1, 1};
+        ++v;
+    }
+    return share_null;
+}
+
+DLexeme::lexeme DLexeme::sym_stop_on(DLexeme::raw v, DLexeme::raw end, char c)
+{
+    while(*v != '\0' && v != end)
+    {
+        if(*v == c) return {v, v+1, 1};
+        ++v;
+    }
+    return {v, v+1, 1};
 }
 DArray<int> DLexeme::numbers(DLexeme::raw v, DLexeme::raw end, DLexeme::read_context *context, DLexeme::raw special)
 {
@@ -202,17 +245,66 @@ char DLexeme::option(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special, cha
     }
     return 0;
 }
-DLexeme::lexeme DLexeme::lex(DLexeme::raw v, DLexeme::raw end, DLexeme::raw rule, DLexeme::raw special)
+DLexeme::lexeme DLexeme::find(DLexeme::raw v, DLexeme::raw end, DLexeme::raw rule, DLexeme::raw special)
 {
-    lex_context c = read_rule(rule);
-    lexeme l;
-    while ( (l = base(v, end, special)).begin )
+    if(v == NULL) return share_null;
+    raw __rule = rule ? rule : inner_rule;
+    if(__rule == NULL) return share_null;
+
+    lex_context c;
+    int r = read_rule(__rule, c);
+    if(r < 0)
     {
-        if(_check_lex(&l, &c)) return l;
+        return share_null;
+    }
+    lexeme l;
+    DLexeme::raw __special = special ? special : c.inner_special;
+
+//    qDebug()<<"find: __special:"<<__special;
+    value_t cnt = 0;
+    while ( (l = base(v, end, __special)).begin )
+    {
+//        qDebug()<<"check lexeme:"<<lexeme_to_string(l).c_str();
+        if(_check_lex(&l, &c))
+        {
+//            qDebug()<<"---- check: true";
+            if(++cnt > c.skip) return l;
+        }
         v = l.end;
     }
     return share_null;
 }
+
+void DLexeme::set_rule(DLexeme::raw rule)
+{
+    if(rule)
+    {
+        int s = strlen(rule);
+        if(s > 0)
+        {
+            if(  (inner_rule = reget_zmem(inner_rule, s)) != NULL)
+                copy_mem(inner_rule, rule, s);
+        }
+    }
+}
+bool DLexeme::check_rule(DLexeme::raw rule)
+{
+    raw __rule = rule ? rule : inner_rule;
+    if(__rule == NULL) return false;
+    lexeme l;
+    auto check = __rule;
+    while(  (l = sym_base(check, nullptr, '<')).begin  )
+    {
+        if( !(l = sym_base(l.end, nullptr, '>')).begin)
+        {
+            return false;
+        }
+        check = l.end;
+    }
+    return true;
+}
+
+
 void DLexeme::shift_lex(DLexeme::lexeme *l, int s)
 {
     if(l->begin && s <= l->size)
@@ -222,12 +314,14 @@ void DLexeme::shift_lex(DLexeme::lexeme *l, int s)
     }
     else *l = share_null;
 }
-DLexeme::lex_context DLexeme::read_rule(DLexeme::raw rule)
+int DLexeme::read_rule(DLexeme::raw rule, lex_context &c)
 {
-    lex_context context;
-    context.min_len = 0;
-    context.max_len = 0;
-    context.direct_mode = true;
+    c.min_len = 0;
+    c.max_len = 0;
+    c.skip = 0;
+    c.direct_mode = true;
+    c.inner_special = NULL;
+
     lexeme l;
     raw special1 = " =|:>#,";
     raw special2 = " :>";
@@ -238,7 +332,7 @@ DLexeme::lex_context DLexeme::read_rule(DLexeme::raw rule)
         if( !(l = sym_base(l.end, nullptr, '>')).begin)
         {
             printf("read_rule: Syntax error with <> blocks\n");
-            return context;
+            return -1;
         }
         check = l.end;
     }
@@ -258,24 +352,46 @@ DLexeme::lex_context DLexeme::read_rule(DLexeme::raw rule)
                 value_t value = 0;
                 block_it = l.end;
 
-                if(base_equal(l, "min"))
+                int undefined_block = 1;
+
+                if(undefined_block && base_equal(l, "min"))
                 {
-                    val_p = &context.min_len;
+                    val_p = &c.min_len;
+                    undefined_block = 0;
                 }
-                if(base_equal(l, "max"))
+                if(undefined_block && base_equal(l, "max"))
                 {
-                    val_p = &context.max_len;
+                    val_p = &c.max_len;
+                    undefined_block = 0;
                 }
-                if(base_equal(l, "len")
+                if(undefined_block && base_equal(l, "len")
                    && (local = sym_base(block_it, block_end, ':')).begin
                         )
                 {
-                    context.len_wl = list(local.end, block_end, special1);
+                    c.len_wl = list(local.end, block_end, special1);
+                    undefined_block = 0;
                 }
-                if(base_equal(l, "nodirect"))
+                if(undefined_block && base_equal(l, "nodirect"))
                 {
-                    context.direct_mode = false;
+                    c.direct_mode = false;
+                    undefined_block = 0;
                 }
+                if(undefined_block && base_equal(l, "spec")
+                        && (local = sym_base(block_it, block_end, ':')).begin)
+                {
+                    auto __special_lexeme = base(local.end, block_end, ">");
+                    c.inner_special = get_zmem<char>(__special_lexeme.size);
+                    copy_mem(c.inner_special, __special_lexeme.begin, __special_lexeme.size);
+
+                    undefined_block = 0;
+                }
+                if(undefined_block && base_equal(l, "skip"))
+                {
+                    val_p = &c.skip;
+                    undefined_block = 0;
+                }
+
+
                 if(val_p
                    && ( block_it = sym_base(block_it, block_end, ':').begin )
                    && ( l = base(block_it, block_end, special1)).begin
@@ -315,11 +431,11 @@ DLexeme::lex_context DLexeme::read_rule(DLexeme::raw rule)
                     block_it = l.end;
                 }
             } while(  (block_it = sym_base(block_it, block_end, '|').begin) );
-            if(head_sl) context.sub_lex.push_back(head_sl);
+            if(head_sl) c.sub_lex.push_back(head_sl);
         }
         rule = block_end;
     }
-    return context;
+    return 0;
 }
 bool DLexeme::__check_block(DLexeme::sublex *sl, DLexeme::lexeme *l, bool direct_mode)
 {
@@ -377,4 +493,42 @@ bool DLexeme::_check_lex(DLexeme::lexeme *l, DLexeme::lex_context *c)
     }
     else return false;
     return true;
+}
+
+
+void lexeme_print(const DLexeme::lexeme &l, bool show_size)
+{
+    std::cout << '[';
+    auto b = l.begin;
+    while( b != l.end ) std::cout << *b++;
+    std::cout <<"]";
+    if(show_size) std::cout << " (" << l.size << ')';
+    std::cout << std::endl;
+}
+void lexeme_parse(const DLexeme::lexeme &l, char *buffer, size_t buffer_size)
+{
+    int n = buffer_size < (size_t)l.size ? buffer_size : l.size;
+    snprintf(buffer, n, l.begin);
+}
+std::string lexeme_to_string(const DLexeme::lexeme &l)
+{
+    if(l.begin && l.size > 0)
+        return std::string(l.begin, l.size);
+    return  std::string();
+}
+int lexeme_to_number(const DLexeme::lexeme &l)
+{
+    if(l.begin && l.size > 0)
+        return DLexeme().number(l.begin, l.end);
+    return 0;
+}
+int lexeme_force_number(const DLexeme::lexeme &l, int big_endian)
+{
+    int v = 0;
+    if(big_endian)
+        D_WB32_P2P(&v, l.begin);
+    else
+        D_WL32_P2P(&v, l.begin);
+
+    return v;
 }

@@ -8,9 +8,11 @@
 #include <stdio.h>
 #include <string.h>
 
+
+
+
 namespace PROFILER {
 
-    static timeval global_time;
     static std::map<std::string, unsigned> start;
     static void START_PBLOCK(const std::string &NAME)
     {
@@ -24,13 +26,67 @@ namespace PROFILER {
         std::cout << "---------- END BLOCK" << NAME.c_str() << "on:" << end_time << "INTERVAL:" << end_time - start[NAME] <<std::endl;
     }
 //============================================================================================
+
     typedef struct tp
     {
         struct timeval t;
         int n_name;
         std::string s_name;
     }tp;
-    static std::vector<tp> time_points;
+    extern std::vector<tp> time_points;
+
+
+     double fsec_dif(timeval* t1, timeval* t2);
+     int sec_dif(timeval* t1, timeval* t2);
+     int usec_dif(timeval* t1, timeval* t2);
+     timeval time_dif(timeval* t1, timeval* t2);
+     timeval gettime();
+     int find_tp(int name);
+     int find_tp(const char* name);
+     void time_point(const char* name);
+     void time_point(int name);
+     template <class name_t1, class name_t2>
+     void print_tp_range(name_t1 name1, name_t2 name2, const char* custom_message = nullptr)
+     {
+//         qDebug()<<"::::: CALL: print_tp_range:"<<"name1:"<<name1<<"name2:"<<name2;
+         timeval t1, t2;
+         int n1 = find_tp(name1);
+         int n2 = find_tp(name2);
+
+         if(n1 == -1 || n2 == -1)
+         {
+             std::cout << "Wrong time points: (" << name1 <<"," << name2 <<")"<<std::endl;
+ //            qDebug()<<"Wrong time point name ("<<name1<<","<<name2<<")";
+             return ;
+         }
+
+         t1 = time_points[n1].t;
+         t2 = time_points[n2].t;
+
+
+         int dif = (1000000L * (t2.tv_sec - t1.tv_sec)) + (t2.tv_usec - t1.tv_usec);
+         int sec = (int)(dif/1000000L);
+         int usec = dif - sec*1000000L;
+
+//         qDebug()<<"print_tp_range: point1: name:"<<name1<<"time:"<<t1.tv_sec<<t1.tv_usec<<"point2: name:"<<name2<<"time:"<<t2.tv_sec<<t2.tv_usec
+//                <<"dif:"<<dif<<"sec:"<<sec<<"usec:"<<usec;
+
+
+         if(custom_message)
+             std::cout << custom_message << " " << sec << " s " << usec << " us" << std::endl;
+         else
+             std::cout << "TIME (" << name1 << "-" << name2 << "):" << sec << "s" << usec << "us" <<std::endl;
+     }
+/*
+    static timeval global_time;
+
+    typedef struct tp
+    {
+        struct timeval t;
+        int n_name;
+        std::string s_name;
+    }tp;
+     static std::vector<tp> time_points;
 
     static double fsec_dif(timeval* t1, timeval* t2)
     {
@@ -63,10 +119,14 @@ namespace PROFILER {
         int n = 0;
         for(auto it: time_points)
         {
+            printf("Find point: %d, compare with: %d\n", name, it.n_name);
             if(it.n_name == name)
+            {
                 return n;
+            }
             ++n;
         }
+        printf("find_tp (%d): fault | vector size: %d\n", name, time_points.size());
         return -1;
     }
     static int find_tp(const char* name)
@@ -91,19 +151,28 @@ namespace PROFILER {
     {
         struct timeval t;
         gettimeofday(&t, nullptr);
-        if(int n = find_tp(name) < 0) time_points.push_back( tp{t, name, std::to_string(name)} );
-        else time_points[n].t = t;
+        if(int n = find_tp(name) < 0)
+        {
+            time_points.push_back( tp{t, name, std::to_string(name)} );
+            printf("Add new time point: %d (vector size: %d)\n", name, time_points.size());
+        }
+        else
+        {
+            printf("Replace old time point: %d\n", name);
+            time_points[n].t = t;
+        }
     }
     template <class name_t1, class name_t2>
     void print_tp_range(name_t1 name1, name_t2 name2, const char* custom_message = nullptr)
     {
+        printf("print_tp_range: TP vector size: %d\n", time_points.size());
         timeval t1, t2;
         int n1 = find_tp(name1);
         int n2 = find_tp(name2);
 
         if(n1 == -1 || n2 == -1)
         {
-            std::cout << name1 <<"," << name2 <<")"<<std::endl;
+            std::cout << "Wrong time points: (" << name1 <<"," << name2 <<")"<<std::endl;
 //            qDebug()<<"Wrong time point name ("<<name1<<","<<name2<<")";
             return ;
         }
@@ -137,5 +206,6 @@ namespace PROFILER {
     {
         time_points.clear();
     }
+*/
 }
 #endif // DPROFILER_H

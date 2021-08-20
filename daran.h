@@ -5,6 +5,55 @@
 #include <iostream>
 #include <vector>
 #include <map>
+
+#define FOR_VALUE(X, iterator) for(int iterator=0;iterator!=X;++iterator)
+
+
+#   define D_RB16(x)                            \
+    ((((const uint8_t*)(x))[0] << 8) |          \
+      ((const uint8_t*)(x))[1])
+
+#   define D_RL16(x)                            \
+    ((((const uint8_t*)(x))[1] << 8) |          \
+      ((const uint8_t*)(x))[0])
+
+#   define D_WB16(p, val) do {                  \
+        uint16_t d = (val);                     \
+        ((uint8_t*)(p))[1] = (d);               \
+        ((uint8_t*)(p))[0] = (d)>>8;            \
+    } while(0)
+#   define D_WL16(p, val) do {                  \
+        uint16_t d = (val);                     \
+        ((uint8_t*)(p))[0] = (d);               \
+        ((uint8_t*)(p))[1] = (d)>>8;            \
+    } while(0)
+#   define D_WB32(p, val) do {                  \
+        uint32_t d = (val);                     \
+        ((uint8_t*)(p))[3] = (d);               \
+        ((uint8_t*)(p))[2] = (d)>>8;            \
+        ((uint8_t*)(p))[1] = (d)>>16;           \
+        ((uint8_t*)(p))[0] = (d)>>24;           \
+    } while(0)
+#   define D_WL32(p, val) do {                  \
+        uint32_t d = (val);                     \
+        ((uint8_t*)(p))[0] = (d);               \
+        ((uint8_t*)(p))[1] = (d)>>8;            \
+        ((uint8_t*)(p))[2] = (d)>>16;           \
+        ((uint8_t*)(p))[3] = (d)>>24;           \
+    } while(0)
+#   define D_WL32_P2P(p, p_val) do {                  \
+    ((uint8_t*)(p))[0] = ((uint8_t*)(p_val))[0];      \
+    ((uint8_t*)(p))[1] = ((uint8_t*)(p_val))[1];      \
+    ((uint8_t*)(p))[2] = ((uint8_t*)(p_val))[2];      \
+    ((uint8_t*)(p))[3] = ((uint8_t*)(p_val))[3];      \
+} while(0)
+#   define D_WB32_P2P(p, p_val) do {                  \
+    ((uint8_t*)(p))[3] = ((uint8_t*)(p_val))[0];      \
+    ((uint8_t*)(p))[2] = ((uint8_t*)(p_val))[1];      \
+    ((uint8_t*)(p))[1] = ((uint8_t*)(p_val))[2];      \
+    ((uint8_t*)(p))[0] = ((uint8_t*)(p_val))[3];      \
+} while(0)
+
 static inline bool buffer_compare(const void* buffer1, const void* buffer2, int size)
 {
     if(buffer1 == nullptr || buffer2 == nullptr) return false;
