@@ -24,10 +24,12 @@ std::string getBaseName(const std::string &name_with_extension);
 /// -3: Fail of alloc memory for buffer
 /// -4: Read '0' bytes
 /// Set NULL to ingore this.
+/// \param read
+/// If read != NULL 'read_file' set to '*read' number of bytes read from file
 /// \return
 /// Pointer to buffer with file data or NULL if error occur (read 'error_code' description)
 ///
-uint8_t* read_file(const char *path, size_t size, int *error_code, size_t *readed); //alloc new memory, use free_file_data() (or free_mem()) fo free it
+uint8_t* read_file(const char *path, size_t size, int *error_code, size_t *read); //alloc new memory, use free_file_data() (or free_mem()) fo free it
 ///
 /// \brief free_file_data
 /// Free buffer by 'get_file_data' function. Wrapper of free_mem().
@@ -69,8 +71,8 @@ private:
 class Directory
 {
 public:
-    typedef std::vector<FileDescriptor>::iterator FileIterator;
-    typedef std::vector<FileDescriptor>::const_iterator ConstFileIterator;
+    typedef std::vector<FileDescriptor*>::iterator FileIterator;
+    typedef std::vector<FileDescriptor*>::const_iterator ConstFileIterator;
 
     FileIterator beginFiles();
     ConstFileIterator constBeginFiles() const;
@@ -82,15 +84,18 @@ public:
     const char* getPath() const;
     const char* getName() const;
     size_t size() const;
-    FileDescriptor& getFile(int index);
-    const FileDescriptor& getFile(int index) const;
+    FileDescriptor* getFile(size_t index);
+    const FileDescriptor* getFile(size_t index) const;
+
+    FileDescriptor* getFile(const std::string &name);
+    const FileDescriptor* getFile(const std::string &name) const;
 
     Directory();
     ~Directory();
     friend class DDirReader;
 private:
     void addFile(const char *name);
-    std::vector<FileDescriptor> list;
+    std::vector<FileDescriptor*> list;
     std::string full_path;
     std::string name;
 };
@@ -112,14 +117,12 @@ public:
     ConstDirectoryIterator constEnd() const;
     size_t size() const;
 
-//    DLogs::DLogContext* getLogContext();
-//    const DLogs::DLogContext* getLogContext() const;
 
     Directory* getDirectory(size_t index);
     const Directory* getDirectory(size_t index) const;
 public:
     std::vector<Directory*> directories;
-//    DLogs::DLogContext log_context;
+
     void init_log_context();
 };
 /*

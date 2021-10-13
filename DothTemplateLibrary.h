@@ -5,7 +5,6 @@
 #include "DHolder.h"
 #include "DBox.h"
 #include "DList.h"
-#include "DLogs.h"
 #include "DLexeme.h"
 #include "DMatrix.h"
 #include "DMatrixTrack.h"

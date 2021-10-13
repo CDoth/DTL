@@ -3,6 +3,12 @@
 
 #include "DWatcher.h"
 #include "dmem.h"
+
+//#include <QDebug>
+
+
+
+
 enum DArrayWriteMode {Direct, Undirect, Auto};
 template <class T, DArrayWriteMode WriteMode = Auto>
 class DArray
@@ -33,7 +39,7 @@ public:
 
     DArray()
     {
-        Data* d = new Data(sizeof(stored_type));
+        Data* d = new Data();
         w = new DDualWatcher(d, CloneWatcher);
     }
     explicit DArray(int s)
@@ -153,6 +159,7 @@ public:
     const T& constFront() const {return _get_ref(0);}
     const T& constBack() const {return _get_ref(data()->size-1);}
     const T& operator[](int i) const {return _get_ref(i);}
+    const T* pointer(int i) const {detach(); return _get_ptr(i);}
     const T& at(int i) const {if(i >= 0 && i < data()->size) return _get_ref(i);}
 
 
@@ -187,7 +194,7 @@ public:
             if( *b++ == t ) return i;
             ++i;
         }
-        return 0;
+        return -1;
     }
     int index_of_within(const T &t, int start_pos, int end_pos)
     {
@@ -204,49 +211,70 @@ public:
             if( *b++ == t ) return i;
             ++i;
         }
-        return 0;
+        return -1;
     }
     const_iterator contain(const T& t) const
     {
         auto b = begin();
         auto e = end();
-        while( b != e ) if(*b++ == t) return b;
-        return nullptr;
+        while( b != e )
+        {
+            if(*b == t)
+                return b;
+            ++b;
+        }
+        return e;
     }
     const_iterator contain_within(const T& t, int start = 0, int end = 0) const
     {
         if(start >= end) start = end = 0;
         auto b = begin() + start;
         auto e = begin() + end;
-        while( b != e ) if(*b++ == t) return b;
-        return nullptr;
+        while( b != e )
+        {
+            if(*b == t)
+                return b;
+            ++b;
+        }
+        return e;
     }
     iterator contain(const T& t)
     {
         auto b = begin();
         auto e = end();
-        while( b != e ) if(*b++ == t) return b;
-        return nullptr;
+        while( b != e )
+        {
+            if(*b == t)
+                return b;
+            ++b;
+        }
+        return e;
     }
     iterator contain_within(const T& t, int start = 0, int end = 0)
     {
         if(start >= end) start = end = 0;
         auto b = begin() + start;
         auto e = begin() + end;
-        while( b != e ) if(*b++ == t) return b;
-        return nullptr;
+        while( b != e )
+        {
+            if(*b == t)
+                return b;
+            ++b;
+        }
+        return e;
     }
 
+
     void append(){detach();  _push(data()->_get_place(), __metatype());}
-
-
-    void append(const T& t) {detach();  _push(t, data()->_get_place(), __metatype());}
-    void append_debug(const T& t) {detach();  _push_debug(t, data()->_get_place(), __metatype());}
-
-
+    void append(const T &t) {detach();  _push(t, data()->_get_place(), __metatype());}
     void append(const T& t, int n) {detach(); while(n--) append(t);}
-    void append_line(const DArray<T, WriteMode>& from)
+    void appendAt(int n)
     {
+        append(T(), n);
+    }
+    void appendLine(const DArray<T, WriteMode>& from)
+    {
+        detach();
         if(__metatype::DirectPlacement && std::is_trivial<T>::value)
         {
                 if(available() < from.size()) reserve(  reserved() + (from.size() - available()) );
@@ -260,6 +288,92 @@ public:
             while( b != e ) append(*b++);
         }
     }
+    void appendLine(const T* d, int n)
+    {
+        detach();
+        if(__metatype::DirectPlacement && std::is_trivial<T>::value)
+        {
+                if(available() < n) reserve(  reserved() + (n - available()) );
+                copy_mem(end(), d, n);
+                data()->size += n;
+        }
+        else
+        {
+            auto e = d + n;
+            while( d != e ) append(*d++);
+        }
+    }
+    void reform(int n)
+    {
+        if(n > size())
+        {
+            appendAt(n - size());
+        }
+        else if(n < size())
+        {
+            cutEnd(size() - n);
+        }
+    }
+
+    void copy_value(const DArray &src)
+    {
+        detach();
+        if(__metatype::DirectPlacement && std::is_trivial<T>::value)
+        {
+            copy_mem(begin(), src.constBegin(), std::min(size(), src.size()));
+        }
+        else
+        {
+            auto b_dst = begin();
+            auto e_dst = end();
+            auto b_src = src.constBegin();
+            auto e_src = src.constEnd();
+
+            while(b_dst != e_dst && b_src != e_src)
+            {
+                *b_dst++ = *b_src++;
+            }
+        }
+    }
+    void loadSource(const T *src, int n)
+    {
+        if(src == nullptr || n <= 0)
+            return;
+        detach();
+        if(__metatype::DirectPlacement && std::is_trivial<T>::value)
+        {
+            if(n > size())
+            {
+                data()->_reserve_and_count(n);
+            }
+            if(n > 0)
+            {
+                copy_mem(begin(), src, n);
+            }
+        }
+        else
+        {
+            if(n > size())
+            {
+                this->appendAt(n-size());
+            }
+            if(n > 0)
+            {
+                auto src_e = src + n;
+                auto b = begin();
+                while(src!=src_e)
+                {
+                    *b++ = *src++;
+                }
+            }
+        }
+    }
+    void setSource(T *src, int n)
+    {
+        clear();
+        data()->_set_source(src, n);
+    }
+
     void reserve(int s) {detach(); data()->_reserve(s);}
     void remove(iterator it){detach();_remove(it, __metatype());}
     void remove_all() {detach(); _destruct(__metatype());}
@@ -278,8 +392,66 @@ public:
             ++b;
         }
     }
+    void removeFirst()
+    {
+        if(size())
+        {
+            detach();
+            remove_by_index(0);
+        }
+    }
+    void removeLast()
+    {
+        if(size())
+        {
+            detach();
+            remove_by_index(size()-1);
+        }
+    }
+    void cutEnd(int n)
+    {
+        if(size() && n > 0 && n <= size())
+        {
+            if(n == 1)
+            {
+                removeLast();
+                return;
+            }
+            detach();
+            _cut(size() - n, size()-1, __metatype());
+        }
+    }
+    void cutBegin(int n)
+    {
+        if(size() && n > 0 && n <= size())
+        {
+            if(n == 1)
+            {
+                remove_by_index(0);
+                return;
+            }
+            detach();
+            _cut(0, n-1, __metatype());
+        }
+    }
+    void cut(int start, int end)
+    {
+        if(size() && start >= 0 && start < size() && end >= 0 && end < size())
+        {
+            if(start == end)
+            {
+                remove_by_index(start);
+                return;
+            }
+            detach();
+            if(start > end)
+                std::swap(start, end);
+            _cut(start, end, __metatype());
+        }
+    }
     T& at(int i) {detach(); if(i >= 0 && i < data()->size) return _get_ref(i);}
     T& operator[](int i) {detach(); return _get_ref(i);}
+    T* pointer(int i) {detach(); return _get_ptr(i);}
     void clear() {detach(); *this = DArray();}
     T& front() {detach(); return _get_ref(0);}
     T& back() {detach(); return _get_ref(data()->size-1);}
@@ -329,17 +501,13 @@ public:
 public:
     struct Data
     {
-        Data(int cs) : data(nullptr), alloc(0), size(0)/*, cell_size(cs)*/{}
+        Data() : data(nullptr), alloc(0), size(0), outData(false)/*, cell_size(cs)*/{}
         ~Data() {free_mem(data);}
         stored_type *data;
         int alloc;
         int size;
-//        int cell_size;
+        bool outData;
 
-//        stored_type* t()
-//        {return reinterpret_cast<stored_type*>(data);}
-//        const stored_type* t() const
-//        {return reinterpret_cast<const stored_type*>(data);}
 
         stored_type* t()
         {return data;}
@@ -361,13 +529,44 @@ public:
             free_mem(_d);
             return _p - _copy_size;
         }
-        void  _reserve(int s)
+        void _reserve_and_count(int s)
         {
-            if( s > alloc || (s < alloc && s >= size) )
+            if(_reserve(s) == s)
+                size = alloc;
+        }
+        int  _reserve(int s)
+        {
+            if( s > alloc )
             {
                 alloc = s;
-                data = reget_mem(data, alloc);
+                if(__metatype::DirectPlacement && !std::is_trivial<T>::value && size > 0)
+                {
+                    data = __cmpx_realloc(data, alloc, size);
+                }
+                else
+                {
+                    data = reget_mem(data, alloc);
+                }
+                return s;
             }
+            return 0;
+        }
+        int _reserve_down(int s)
+        {
+            if( s < alloc && s >= size )
+            {
+                alloc = s;
+                if(__metatype::DirectPlacement && !std::is_trivial<T>::value && size > 0)
+                {
+                    data = __cmpx_realloc(data, alloc, size);
+                }
+                else
+                {
+                    data = reget_mem(data, alloc);
+                }
+                return s;
+            }
+            return 0;
         }
         void* _get_place()
         {
@@ -381,16 +580,20 @@ public:
                 alloc = ( size + 1 ) * 2;
                 if(__metatype::DirectPlacement && !std::is_trivial<T>::value && size > 0)
                 {
-//                    qDebug()<<"need complex realloc ------------------------------------"<<alloc;
                     data = __cmpx_realloc(data, alloc, size);
-//                    data = reget_mem(data, alloc);
                 }
                 else
                 {
-//                    qDebug()<<"need simple realloc -------------------------------------"<<alloc;
                     data = reget_mem(data, alloc);
                 }
             }
+        }
+        void _set_source(stored_type *_d, int _size)
+        {
+            data = _d;
+            size = _size;
+            alloc = size;
+            outData = true;
         }
     };
     DDualWatcher* w;
@@ -398,7 +601,7 @@ public:
 
     Data* clone()
     {
-        Data* _d = new Data(sizeof(stored_type));
+        Data* _d = new Data();
         _d->_reserve(data()->alloc);
         auto b_source = constBegin();
         auto e_source = constEnd();
@@ -407,7 +610,7 @@ public:
     }
     void detach()
     {
-        if(!w->is_unique())
+        if(!w->is_unique() || data()->outData)
         {
             if(w->is_share() && w->otherSideRefs())
             {
@@ -451,26 +654,22 @@ public:
 
     void _push(void* place, SmallType)
     {
-
         if(std::is_trivial<T>::value)
         {
             *reinterpret_cast<T*>(place) = T();
         }
         else
         {
-//            qDebug()<<"_push"<<place;
             new (place) T;
         }
     }
     void _push(void* place, LargeType)
     {
-//        qDebug()<<"_push LargeType";
-        if(__metatype::DirectPlacement)
-        {
-
-            new (place) T;
-        }
-        else
+//        if(__metatype::DirectPlacement)
+//        {
+//            new (place) T;
+//        }
+//        else
             *reinterpret_cast<T**>(place) = new T;
     }
     void _push(const T& t, void* place, SmallType)
@@ -500,49 +699,111 @@ public:
 
     void _insert( const T& t, int i)
     {
-           data()->_reserve_up();
-           memmove((data()->t() + i + 1),(data()->t() + i), (data()->size - i) * sizeof(stored_type));
-           _push(t, data()->t() + i, __metatype());
-           ++data()->size;
+        data()->_reserve_up();
+        _move_data((data()->t() + i + 1),
+                   (data()->t() + i),
+                   (data()->size - i));
+        _push(t, data()->t() + i, __metatype());
+        ++data()->size;
     }
     void _remove( iterator it, SmallType)
     {
         if(!std::is_trivial<T>::value) it->~T();
-        memmove( it,  it+1,  (end() - (it+1)) * sizeof(stored_type)  );
+        _move_data( it, it+1, (end() - (it+1)));
         --data()->size;
     }
     void _remove( iterator it, LargeType )
     {
         delete &*it;
-        memmove( it,  it+1,  (end() - (it+1)) * sizeof(stored_type)  );
+        _move_data( it, it+1, (end() - (it+1)));
         --data()->size;
     }
     void _remove( int i, SmallType )
     {
         if(!std::is_trivial<T>::value) reinterpret_cast<T*>(data()->t() + i)->~T();
-        memmove( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1) * sizeof(stored_type)  );
+        _move_data( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1) );
         --data()->size;
     }
     void _remove( int i, LargeType )
     {
         delete *reinterpret_cast<T**>(data()->t() + i);
-        memmove( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1) * sizeof(stored_type)  );
+        _move_data( (data()->t() + i),  (data()->t() + i+1),  (data()->size - i - 1)  );
         --data()->size;
     }
+    void _cut( int start, int end, SmallType)
+    {
+        if(__metatype::DirectPlacement)
+        {
+            if(!std::is_trivial<T>::value)
+            {
+                auto b = data()->t() + start;
+                auto e = data()->t() + end;
+                while(b != e)
+                {
+                    (--e)->~T();
+                }
+            }
+        }
+        _move_data(data()->t() + start,
+                   data()->t() + end + 1,
+                   data()->size - end);
+
+        data()->size = data()->size - (end-start) - 1;
+    }
+    void _cut( int start, int end, LargeType)
+    {
+        auto b = data()->t() + start;
+        auto e = data()->t() + end;
+        while(b != e) delete *(--e);
+
+        _move_data(data()->t() + start,
+                   data()->t() + end + 1,
+                   data()->size - end);
+
+        data()->size = data()->size - (end-start) - 1;
+    }
+    void _move_data(stored_type *dst, stored_type *src, int n)
+    {
+        if(__metatype::DirectPlacement)
+            placementNewMemMove(dst, src, n);
+        else
+            memmove(dst, src, n * sizeof(stored_type));
+    }
+
     const T& _get_ref(int i) const
     {
         if(__metatype::DirectPlacement) return *reinterpret_cast<const T*>(  data()->t() + i  );
         else return **reinterpret_cast<T*const*>(  data()->t() + i  );
-
     }
     T& _get_ref(int i)
     {
         if(__metatype::DirectPlacement) return *reinterpret_cast<T*>(  data()->t() + i  );
         else return **reinterpret_cast<T**>(  data()->t() + i  );
     }
+    const T* _get_ptr(int i) const
+    {
+        if(i >= 0 && i < data()->size)
+        {
+            if(__metatype::DirectPlacement) return reinterpret_cast<const T*>(data()->t() + i);
+            else return *reinterpret_cast<T*const*>(data()->t() + i);
+        }
+        else
+            return nullptr;
+    }
+    T* _get_ptr(int i)
+    {
+        if(i >= 0 && i < data()->size)
+        {
+            if(__metatype::DirectPlacement) return reinterpret_cast<T*>(data()->t() + i);
+            else return *reinterpret_cast<T**>(data()->t() + i);
+        }
+        else
+            return nullptr;
+    }
     void _destruct(SmallType)
     {
-//        qDebug()<<" DArray::_destruct"<<this;
+        if(data()->outData)
+            return;
         auto b = data()->t();
         auto e = data()->t() + data()->size;
         if(!std::is_trivial<T>::value)
@@ -557,6 +818,8 @@ public:
     }
     void _destruct(LargeType)
     {
+        if(data()->outData)
+            return;
         auto b = data()->t();
         auto e = data()->t() + data()->size;
         while(b != e) delete *(--e);

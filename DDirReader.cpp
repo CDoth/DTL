@@ -49,7 +49,7 @@ std::string getBaseName(const std::string &name_with_extension)
     }
     return name;
 }
-uint8_t *read_file(const char *path, size_t size, int *error_code, size_t *readed)
+uint8_t *read_file(const char *path, size_t size, int *error_code, size_t *read)
 {
 #define WRITE_ERROR(code) \
     if(error_code) *error_code = code;
@@ -81,14 +81,14 @@ uint8_t *read_file(const char *path, size_t size, int *error_code, size_t *reade
         WRITE_ERROR(-3);
         return NULL;
     }
-    size_t read = fread(buffer, 1, file_size, f);
-    if(read == 0 || read < file_size)
+    size_t r = fread(buffer, 1, file_size, f);
+    if(read == 0 || r < file_size)
     {
         WRITE_ERROR(-4);
         free_mem(buffer);
         return NULL;
     }
-    if(readed) *readed = read;
+    if(read) *read = r;
     fclose(f);
     return buffer;
 
@@ -160,7 +160,8 @@ std::string path_get_last_section(const std::string &path)
 //========================================== FileDescriptor
 FileDescriptor::FileDescriptor()
 {
-
+    size = 0;
+    root = NULL;
 }
 FileDescriptor::~FileDescriptor()
 {
@@ -199,11 +200,11 @@ void Directory::addFile(const char *name)
 {
     if(name)
     {
-        FileDescriptor file;
-        file.name = name;
-        file.path = full_path + file.name;
-        file.root = this;
-        file.size = get_file_size(file.path.c_str());
+        FileDescriptor *file = new FileDescriptor;
+        file->name = name;
+        file->path = full_path + file->name;
+        file->root = this;
+        file->size = get_file_size(file->path.c_str());
         list.push_back(file);
     }
 }
@@ -223,7 +224,6 @@ Directory::ConstFileIterator Directory::constEndFiles() const
 {
     return list.cend();
 }
-
 std::string Directory::getStdPath() const
 {
     return full_path;
@@ -244,13 +244,39 @@ size_t Directory::size() const
 {
     return list.size();
 }
-FileDescriptor &Directory::getFile(int index)
+FileDescriptor *Directory::getFile(size_t index)
 {
-    return list[index];
+    if(index >= 0 && index < list.size())
+        return list[index];
+    return NULL;
 }
-const FileDescriptor &Directory::getFile(int index) const
+const FileDescriptor *Directory::getFile(size_t index) const
 {
-    return list[index];
+    if(index >= 0 && index < list.size())
+        return list[index];
+    return NULL;
+}
+FileDescriptor *Directory::getFile(const std::string &name)
+{
+    auto b = constBeginFiles();
+    auto e = constEndFiles();
+    while(b != e)
+    {
+        if((*b++)->name == name)
+            return *b;
+    }
+    return NULL;
+}
+const FileDescriptor *Directory::getFile(const std::string &name) const
+{
+    auto b = constBeginFiles();
+    auto e = constEndFiles();
+    while(b != e)
+    {
+        if((*b++)->name == name)
+            return *b;
+    }
+    return NULL;
 }
 Directory::Directory()
 {

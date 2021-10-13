@@ -19,7 +19,12 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
     DDirReader.cpp \
     DLexeme.cpp \
-    DLogs.cpp
+    DProfiler.cpp \
+    DRand.cpp \
+    DStatus.cpp \
+    DThreadHandler.cpp \
+    daran.cpp \
+    dmem.cpp
 
 HEADERS += \
     DArray.h \
@@ -29,13 +34,14 @@ HEADERS += \
     DItem.h \
     DLexeme.h \
     DList.h \
-    DLogs.h \
     DMatrix.h \
     DMatrixTrack.h \
     DMetaType.h \
     DMultiMatrix.h \
     DProfiler.h \
+    DRand.h \
     DRgbImage.h \
+    DStatus.h \
     DThreadHandler.h \
     DWatcher.h \
     DothTemplateLibrary.h \
