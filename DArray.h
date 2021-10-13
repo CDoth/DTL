@@ -5,7 +5,8 @@
 #include "dmem.h"
 
 //#include <QDebug>
-//orange check
+//host check
+//123
 
 
 
