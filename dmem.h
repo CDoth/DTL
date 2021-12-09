@@ -4,7 +4,9 @@
 #include <string>
 #include <iostream>
 #include <cstring>
-#include <daran.h>
+#include <type_traits>
+
+#include "daran.h"
 
 
 //#define DMEM_COUNT_MEM_MODE
@@ -251,16 +253,13 @@ void placementNewMemMove(T *dst, const T *src, int n, int srcPlacementNew = 1)
 {
     if(dst && src && dst != src && n > 0)
     {
-        if(!std::is_trivial<T>::value)
-        {
+        if(!std::is_trivially_copyable<T>::value) {
             ptrdiff_t direction = dst - src;
-            if(direction > 0)
-            {
+            if(direction > 0) {
                 auto b_src = src;
                 auto e_src = src + n;
                 auto e_dst = dst + n;
-                while(b_src!=e_src)
-                {
+                while(b_src!=e_src) {
                     --e_dst; --e_src;
                     new (e_dst) T(*e_src);
                     if(srcPlacementNew)
@@ -269,13 +268,11 @@ void placementNewMemMove(T *dst, const T *src, int n, int srcPlacementNew = 1)
                         delete e_src;
                 }
             }
-            else
-            {
+            else {
                 auto b_src = src;
                 auto e_src = src + n;
                 auto b_dst = dst;
-                while(b_src!=e_src)
-                {
+                while(b_src!=e_src) {
                     new (b_dst) T(*b_src);
                     if(srcPlacementNew)
                         b_src->~T();
@@ -285,8 +282,7 @@ void placementNewMemMove(T *dst, const T *src, int n, int srcPlacementNew = 1)
                 }
             }
         }
-        else
-        {
+        else {
             memmove(dst, src, range<T>(n));
         }
     }
@@ -294,36 +290,29 @@ void placementNewMemMove(T *dst, const T *src, int n, int srcPlacementNew = 1)
 template <class T>
 void placementNewMemCopy(T *dst, T *src, int n)
 {
-    if(dst && src && dst != src && n > 0)
-    {
-        if(!std::is_trivial<T>::value)
-        {
+    if(dst && src && dst != src && n > 0) {
+        if(!std::is_trivially_copyable<T>::value) {
             ptrdiff_t direction = dst - src;
-            if(direction > 0)
-            {
+            if(direction > 0) {
                 auto b_src = src;
                 auto e_src = src + n;
                 auto e_dst = dst + n;
-                while(b_src!=e_src)
-                {
+                while(b_src!=e_src) {
                     --e_dst; --e_src;
                     new (e_dst) T(*e_src);
                 }
             }
-            else
-            {
+            else {
                 auto b_src = src;
                 auto e_src = src + n;
                 auto b_dst = dst;
-                while(b_src!=e_src)
-                {
+                while(b_src!=e_src) {
                     new (b_dst) T(*b_src);
                     ++b_dst; ++b_src;
                 }
             }
         }
-        else
-        {
+        else {
             memcpy(dst, src, range<T>(n));
         }
     }

@@ -35,10 +35,12 @@ namespace PROFILER {
     }tp;
     extern std::vector<tp> time_points;
 
+    void waitUsec(int usec);
 
      double fsec_dif(timeval* t1, timeval* t2);
      int sec_dif(timeval* t1, timeval* t2);
      int usec_dif(timeval* t1, timeval* t2);
+     int timeval2usec(timeval *t);
      timeval time_dif(timeval* t1, timeval* t2);
      timeval gettime();
      int find_tp(int name);

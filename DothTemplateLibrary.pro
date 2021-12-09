@@ -23,6 +23,7 @@ SOURCES += \
     DRand.cpp \
     DStatus.cpp \
     DThreadHandler.cpp \
+    DWatcher.cpp \
     daran.cpp \
     dmem.cpp
 

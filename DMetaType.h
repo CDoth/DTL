@@ -1,7 +1,7 @@
 #ifndef DMETATYPE_H
 #define DMETATYPE_H
 #include <algorithm>
-//#include <QDebug>
+#include <iostream>
 
 template <class T>
 class DMetaType
@@ -74,4 +74,26 @@ private:
 };
 template <> class DMetaType<void>;
 
+
+
+/*
+const int limit = 1;
+int unroll_counter = 0;
+template <class Single>
+bool unrollPack(Single s)
+{
+    std::cout << "unrollPack: base " << s << " counter: " << unroll_counter++ << std::endl;
+    if(unroll_counter < limit)
+        return true;
+    return false;
+}
+template <class FirstObject, class ... Args>
+bool unrollPack(FirstObject f, Args ... a)
+{
+    std::cout << "unrollPack: hub" << std::endl;
+    if(unrollPack(f))
+        unrollPack(a...);
+    return true;
+}
+*/
 #endif // DMETATYPE_H

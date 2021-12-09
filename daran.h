@@ -6,7 +6,7 @@
 #include <vector>
 #include <map>
 
-#define FOR_VALUE(X, iterator) for(int iterator=0;iterator!=X;++iterator)
+#define FOR_VALUE(X, iterator) for(int iterator=0;iterator!= X;++iterator)
 
 
 #   define D_RB16(x)                            \
@@ -54,7 +54,7 @@
     ((uint8_t*)(p))[0] = ((uint8_t*)(p_val))[3];      \
 } while(0)
 
-inline bool buffer_compare(const void* buffer1, const void* buffer2, int size);
+bool buffer_compare(const void* buffer1, const void* buffer2, int size);
 bool buffer_compare2(const uint8_t* buffer1, const uint8_t* buffer2, int size);
 int find_bytes_pos(const void* sample, const void* buffer, int sample_size, int buffer_size);
 const void* find_bytes(const void* sample, const void* buffer, int sample_size, int buffer_size);
@@ -72,8 +72,8 @@ struct matchpos
 int lf_same_sections(void *original, void *edited, int original_size, int edited_size);
 void print_byte(uint8_t byte);
 void put_byte(uint8_t byte, uint8_t* bit_array);
-void look_bytes(void *buffer, int size);
-void look_bytes_8bit_value(void *buffer, int size);
+void look_bytes(const void *buffer, int size);
+void look_bytes_8bit_value(const void *buffer, int size);
 void look_bytes_16bit_value(void *buffer, int size);
 void look_bytes_32bit_value(void *buffer, int size);
 void look_bytes_64bit_value(void *buffer, int size);

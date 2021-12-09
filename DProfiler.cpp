@@ -84,5 +84,21 @@ void time_point(int name)
         time_points[n].t = t;
     }
 }
+int timeval2usec(timeval *t) {
+    return (1000000L * (t->tv_sec)) + (t->tv_usec);
+}
+
+void waitUsec(int usec) {
+    struct timeval s, e;
+    gettimeofday(&s, NULL);
+
+    for(;;) {
+        gettimeofday(&e, NULL);
+        if(usec_dif(&s, &e) > usec) {
+            break;
+        }
+    }
+
+}
 
 }

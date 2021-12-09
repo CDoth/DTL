@@ -107,17 +107,17 @@ public:
     static void
     shell(DHolder<thread_context> tch, TargetF&& tf,  Args&& ... a)
     {
-        const thread_context* tc = tch.constPtr();
-        std::this_thread::sleep_for(tc->sleep_on_start);
-        int c=tc->repeat;
-        while(c--) {
-            tf(a...);
-            if(c) std::this_thread::sleep_for(tc->sleep_on_repeat);
-        }
-        std::this_thread::sleep_for(tc->sleep_on_midle);
-        auto it = tc->__el_begin;
-        while(it != tc->__el_end) (*it++)->go();
-        std::this_thread::sleep_for(tc->sleep_on_end);
+//        const thread_context* tc = tch.constPtr();
+//        std::this_thread::sleep_for(tc->sleep_on_start);
+//        int c=tc->repeat;
+//        while(c--) {
+//            tf(a...);
+//            if(c) std::this_thread::sleep_for(tc->sleep_on_repeat);
+//        }
+//        std::this_thread::sleep_for(tc->sleep_on_midle);
+//        auto it = tc->__el_begin;
+//        while(it != tc->__el_end) (*it++)->go();
+//        std::this_thread::sleep_for(tc->sleep_on_end);
     }
 
     template <class TargetF, class ... Args>

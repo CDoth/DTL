@@ -1,7 +1,6 @@
 #include "DLexeme.h"
-#include <daran.h>
+#include "daran.h"
 
-#include <QDebug>
 void DLexeme::_init_deafault_context()
 {
     default_context = get_mem<read_context>(1);
@@ -462,9 +461,11 @@ bool DLexeme::__check_block(DLexeme::sublex *sl, DLexeme::lexeme *l, bool direct
                 break;
 
             }
+
             case 1: if( buffer_compare(sl->l.begin, l->begin, sl->l.size)) {if(direct_mode) shift_lex(l, sl->l.size);return true;} break;
             case 2: if( buffer_compare(sl->l.begin, l->begin + (l->size - sl->l.size), sl->l.size)) {if(direct_mode) *l = share_null; return true;} break;
             case 3: if( sl->l.size == l->size && buffer_compare(sl->l.begin, l->begin, l->size)) {if(direct_mode) *l = share_null;return true;} break;
+
             }
         sl = sl->next_or;
     }

@@ -2,7 +2,6 @@
 #include <algorithm>
 #include "dmem.h"
 
-#include <QDebug>
 
 #define DDIR_LOG_IT(...) DLM_CLOG(log_context.header_set_message("default"), __VA_ARGS__);
 #define DDIR_BADALLOC(...) DLM_CLOG(log_context.header_set_message("Can't alloc memory for"), __VA_ARGS__);
@@ -20,18 +19,24 @@ size_t get_file_size(const char* path)
     }
     else return 0;
 }
-void getShortSize(size_t bytes, char *shortSizeBuffer, int bufferSize)
+size_t get_file_size(const std::string &path)
 {
-    if(bufferSize <= 0) return;
-    double v = 0.0;
-    for(;;)
-    {
-        int kb = bytes/ 1024;  bytes %= 1024; if(!kb){v = bytes; snprintf(shortSizeBuffer, bufferSize, "%.2f bytes", v);  break;}
-        int mb = kb / 1024;    kb %= 1024;    if(!mb){v = kb + (double)bytes/1024; snprintf(shortSizeBuffer, bufferSize, "%.2f Kb", v);  break;}
-        int gb = mb / 1024;    mb %= 1024;    if(!gb){v = mb + (double)kb/1024; snprintf(shortSizeBuffer, bufferSize, "%.2f Mb", v);  break;}
-        int tb = gb / 1024;    gb %= 1024;    if(!tb){v = gb + (double)mb/1024; snprintf(shortSizeBuffer, bufferSize, "%.2f Gb", v); break;}
-        v = tb + (double)gb/1024; snprintf(shortSizeBuffer, bufferSize, "%.2f Tb", v);   break;
+    return get_file_size(path.c_str());
+}
+std::string  getShortSize(size_t bytes) {
+    if(bytes == 0) {
+        return std::string("0 bytes");
     }
+    static char buffer[30];
+    double v = 0.0;
+    for(;;) {
+        int kb = bytes / 1024;  bytes %= 1024; if(!kb){v = bytes; snprintf(buffer, 30, "%.2f bytes", v);  break;}
+        int mb = kb / 1024;    kb %= 1024;    if(!mb){v = kb + (double)bytes/1024; snprintf(buffer, 30, "%.2f Kb", v);  break;}
+        int gb = mb / 1024;    mb %= 1024;    if(!gb){v = mb + (double)kb/1024; snprintf(buffer, 30, "%.2f Mb", v);  break;}
+        int tb = gb / 1024;    gb %= 1024;    if(!tb){v = gb + (double)mb/1024; snprintf(buffer, 30, "%.2f Gb", v); break;}
+        v = tb + (double)gb/1024; snprintf(buffer, 30, "%.2f Tb", v);   break;
+    }
+    return buffer;
 }
 std::string getBaseName(const std::string &name_with_extension)
 {
@@ -98,18 +103,14 @@ void free_file_data(uint8_t *buffer)
 {
     free_mem(buffer);
 }
-int path_correct(std::string &path)
-{
+int path_correct(std::string &path) {
     char sl = '/';
-    for(size_t i=0;i!=path.size();++i)
-    {
-        if(path[i] == '/')
-        {
+    for(size_t i=0;i!=path.size();++i) {
+        if(path[i] == '/') {
             sl = '/';
             break;
         }
-        if(path[i] == '\\')
-        {
+        if(path[i] == '\\') {
             sl = '\\';
             break;
         }
@@ -556,6 +557,8 @@ DDirReader::dir::iterator DDirReader::dir::find_file_by_path(const char *path, i
 #undef DDIR_BADPOINTER
 #undef DDIR_BADVALUE
 #undef DDIR_FUNCFAIL
+
+
 
 
 

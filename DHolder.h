@@ -190,16 +190,16 @@ class DHolder
 public:
     DHolder()
     {
-        w = new DDualWatcher(new T, CloneWatcher);
+//        w = new DDualWatcher(new T, CloneWatcher);
     }
     DHolder(const T& t)
     {
-        w = new DDualWatcher(new T(t), CloneWatcher);
+//        w = new DDualWatcher(new T(t), CloneWatcher);
     }
     DHolder(const DHolder<T>& h)
     {
         w = h.w;
-        w->refUp();
+//        w->refUp();
     }
     DHolder<T>& operator=(const DHolder<T>& h)
     {
@@ -212,56 +212,57 @@ public:
     }
     ~DHolder()
     {
-        if(w->pull() == 0) {delete data(); delete w;}
+//        if(w->pull() == 0) {delete data(); delete w;}
     }
     void setMode(WatcherMode m)
     {
-        if(m != w->mode())
-        {
-            w->refDown();
-            w = w->otherSide();
-            if(w->otherSideRefs() == 0)
-                w->disconnect();
-            w->refUp();
-        }
+//        if(m != w->mode())
+//        {
+//            w->refDown();
+//            w = w->otherSide();
+//            if(w->otherSideRefs() == 0)
+//                w->disconnect();
+//            w->refUp();
+//        }
     }
 
     void make_unique();
     bool is_unique() const;
     void swap(DHolder<T>& with) {std::swap(w, with.w);}
-    T& get() {detach(); return *data();}
-    const T& constGet() const {return *data();}
+//    T& get() {detach(); return *data();}
+//    const T& constGet() const {return *data();}
 
-    T* ptr() {detach(); return data();}
-    const T* constPtr() const {return data();}
+//    T* ptr() {detach(); return data();}
+//    const T* constPtr() const {return data();}
 
-    void replace(const T& t) {detach(); *data() = t;}
+//    void replace(const T& t) {detach(); *data() = t;}
 private:
-    T* data() {return reinterpret_cast<T*>(w->d());}
-    const T* data() const {return reinterpret_cast<const T*>(w->d());}
+//    T* data() {return reinterpret_cast<T*>(w->d());}
+//    const T* data() const {return reinterpret_cast<const T*>(w->d());}
+
     T* clone()
     {
-        return new T(*data());
+//        return new T(*data());
     }
 
     void detach()
     {
-        if(!w->is_unique())
-        {
-            if(w->is_share() && w->otherSideRefs())
-            {
-                w->disconnect(clone());
-            }
-            else if(w->is_clone())
-            {
-                w->refDown();
-                if(w->sideRefs() == 0) w->disconnect();
-                w = new DDualWatcher(clone(), CloneWatcher);
-            }
-        }
+//        if(!w->is_unique())
+//        {
+//            if(w->is_share() && w->otherSideRefs())
+//            {
+//                w->disconnect(clone());
+//            }
+//            else if(w->is_clone())
+//            {
+//                w->refDown();
+//                if(w->sideRefs() == 0) w->disconnect();
+//                w = new DDualWatcher(clone(), CloneWatcher);
+//            }
+//        }
     }
 
-    DDualWatcher* w;
+    DDualWatcher<int>* w;
 };
 
 /*

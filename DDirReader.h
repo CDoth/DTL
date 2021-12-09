@@ -7,7 +7,8 @@
 #include <fstream>
 
 size_t get_file_size(const char* path);
-void getShortSize(size_t bytes, char *shortSizeBuffer, int bufferSize);
+size_t get_file_size(const std::string &path);
+std::string getShortSize(size_t bytes);
 std::string getBaseName(const std::string &name_with_extension);
 ///
 /// \brief read_file

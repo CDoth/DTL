@@ -22,23 +22,25 @@ public:
 
     typedef T* item_p;
     item_p pull()
-    {return current == store.size() ? nullptr : *(store.raw_begin() + current++);}
+    {
+//        return current == store.size() ? nullptr : *(store.raw_begin() + current++);
+    }
     int  push(item_p i)
     {
-        if(i)
-        {
-            auto b = store.raw_begin();
-            auto e = store.raw_begin() + current;
-            while(b!=e)
-            {
-                if(*b == i)
-                {
-                    std::swap(*b, *(store.raw_begin() + --current));
-                    break;
-                }
-                ++b;
-            }
-        }
+//        if(i)
+//        {
+//            auto b = store.raw_begin();
+//            auto e = store.raw_begin() + current;
+//            while(b!=e)
+//            {
+//                if(*b == i)
+//                {
+//                    std::swap(*b, *(store.raw_begin() + --current));
+//                    break;
+//                }
+//                ++b;
+//            }
+//        }
         return available();
     }
     int size() const{return store.size();}

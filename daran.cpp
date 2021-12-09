@@ -2,12 +2,15 @@
 
 bool buffer_compare(const void* buffer1, const void* buffer2, int size)
 {
+
     if(buffer1 == nullptr || buffer2 == nullptr) return false;
     uint8_t* b1 = (uint8_t*)buffer1;
     uint8_t* b2 = (uint8_t*)buffer2;
     uint8_t* e1 = (uint8_t*)buffer1 + size;
     while(b1!=e1)  if(*b1++ != *b2++) return false;
+
     return true;
+
 }
 bool buffer_compare2(const uint8_t* buffer1, const uint8_t* buffer2, int size)
 {
@@ -160,17 +163,18 @@ void put_byte(uint8_t byte, uint8_t* bit_array)
     int i=0;
     while(i!=8) bit_array[i] = ((byte >> i)&1), ++i;
 }
-void look_bytes(void *buffer, int size)
+void look_bytes(const void *buffer, int size)
 {
-    uint8_t* b = (uint8_t*)buffer;
-    uint8_t* e = (uint8_t*)buffer + size;
+    const uint8_t* b = (uint8_t*)buffer;
+    const uint8_t* e = (uint8_t*)buffer + size;
     while(b != e) print_byte(*b++);
 }
-void look_bytes_8bit_value(void *buffer, int size)
+void look_bytes_8bit_value(const void *buffer, int size)
 {
-    uint8_t* b = (uint8_t*)buffer;
-    uint8_t* e = (uint8_t*)buffer + size;
-    while(b != e) std::cout << *b++ << std::endl;
+    const uint8_t* b = (uint8_t*)buffer;
+    const uint8_t* e = (uint8_t*)buffer + size;
+    while(b != e) std::cout << (int)*b++ << " ";
+    std::cout << std::endl;
 }
 void look_bytes_16bit_value(void *buffer, int size)
 {

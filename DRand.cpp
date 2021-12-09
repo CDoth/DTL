@@ -1,6 +1,6 @@
 #include "DRand.h"
 
-#include <windows.h>
+//#include <windows.h>
 
 inline int mod10(int value)
 {
@@ -87,14 +87,14 @@ int middle(int value)
 unsigned int seed = 101202303;
 int sgen(int r,int q)
 {
-    SYSTEMTIME st;
-    GetLocalTime(&st);
+//    SYSTEMTIME st;
+//    GetLocalTime(&st);
 
     int y1;
     int y2;
     int y3;
 
-    auto key1 = st.wMilliseconds;
+//    auto key1 = st.wMilliseconds;
     auto key2 = 245;
 
     y1 = 18253%(key2+123);
@@ -138,11 +138,12 @@ float sym_partOf(float PART, float TOTAL)
 float xrand()
 {
     seed = seed * seed + seed;
-    float v = partOf(seed, float(UINT_MAX));
+//    float v = partOf(seed, float(UINT_MAX));
 
 
 
-    return v;
+//    return v;
+    return -404.0;
 }
 float xrand(float range)
 {
