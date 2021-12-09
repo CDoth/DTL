@@ -1,0 +1,39 @@
+#!/bin/bash
+
+
+g++ -c \
+/media/root/emmclinux1/DothPlace/DothProject/DTL/daran.cpp \
+/media/root/emmclinux1/DothPlace/DothProject/DTL/DDirReader.cpp \
+/media/root/emmclinux1/DothPlace/DothProject/DTL/dmem.cpp \
+/media/root/emmclinux1/DothPlace/DothProject/DTL/DLexeme.cpp \
+/media/root/emmclinux1/DothPlace/DothProject/DTL/DProfiler.cpp \
+/media/root/emmclinux1/DothPlace/DothProject/DTL/DRand.cpp \
+/media/root/emmclinux1/DothPlace/DothProject/DTL/DStatus.cpp \
+/media/root/emmclinux1/DothPlace/DothProject/DTL/DThreadHandler.cpp \
+-I/media/root/emmclinux1/DothPlace/DothProject/DTL \
+-lpthread \
+-std=c++11 
+
+ar rvs DTLStatic.a \
+daran.o \
+DDirReader.o \
+dmem.o \
+DLexeme.o \
+DProfiler.o \
+DRand.o \
+DStatus.o \
+DThreadHandler.o
+
+cp DTLStatic.a /media/root/emmclinux1/DothPlace/DothProject/Linked/DTLStatic.a
+
+rm DTLStatic.a
+rm daran.o
+rm DDirReader.o
+rm dmem.o
+rm DLexeme.o
+rm DProfiler.o
+rm DRand.o
+rm DStatus.o
+rm DThreadHandler.o
+
+

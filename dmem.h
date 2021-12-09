@@ -8,6 +8,10 @@
 
 #include "daran.h"
 
+#ifndef _WIN32
+#include <stddef.h>
+#endif
+
 
 //#define DMEM_COUNT_MEM_MODE
 
