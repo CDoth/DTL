@@ -358,6 +358,11 @@ private:
         int i = _index_of(t);
         if(i != -1) _remove_by_index(i);
     }
+    void _drop() {
+        _destructAll(__metatype());
+        zero_mem(data, size);
+        size = 0;
+    }
     void _cut(int cutBegin, int cutEnd) {
         _destruct(cutBegin, cutEnd, __metatype());
         _moveObjects(data + cutBegin, data + cutEnd, size - cutEnd);
@@ -473,6 +478,7 @@ private:
         *place = new T(src);
     }
 
+
     void _destruct(int i, _direct_placement_layer) {
         if(!__trivial_destruct) {
             data[i].~T();
@@ -531,6 +537,10 @@ public:
         *this = DArray();
     }
 
+    void drop() {
+        detach();
+        w.data()->_drop();
+    }
     using iterator = typename inner_t::iterator;
     using const_iterator = typename inner_t::const_iterator;
 

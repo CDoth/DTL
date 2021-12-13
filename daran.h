@@ -54,6 +54,20 @@
     ((uint8_t*)(p))[0] = ((uint8_t*)(p_val))[3];      \
 } while(0)
 
+inline float q_rsqrt(float number) {
+    long i;
+    float x2;
+
+    x2 = number * 0.5f;
+    i = *(long*)&number;
+    i = 0x5f3759df - ( i >> 1);
+    number = *(float*)&i;
+    number = number * (1.5f - (x2 * number * number));
+
+    return number;
+}
+
+
 bool buffer_compare(const void* buffer1, const void* buffer2, int size);
 bool buffer_compare2(const uint8_t* buffer1, const uint8_t* buffer2, int size);
 int find_bytes_pos(const void* sample, const void* buffer, int sample_size, int buffer_size);
@@ -62,6 +76,8 @@ const void* find_bytes2(const void *sample, const void *buffer, int sample_size,
 int find_difference_pos(void* first, void* second, int range);
 void* find_difference(void* first, void* second, int range);
 double getPart(double bot, double top, double value);
+float getPartF(float bot, float range, float value);
+
 double getValueByPart(double bot, double top, double part);
 struct matchpos
 {

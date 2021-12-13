@@ -100,6 +100,12 @@ double getPart(double bot, double top, double value)
     value -= bot;
     return value / (top-bot);
 }
+float getPartF(float bot, float range, float value)
+{
+    if(range)
+        return (value - bot) / range;
+    return 0.0f;
+}
 double getValueByPart(double bot, double top, double part)
 {
     if(bot > top)
@@ -217,3 +223,18 @@ void addByte(uint64_t& store, uint8_t& byte)
 {
     store = (store<<8)|byte;
 }
+
+
+
+//float q_rsqrt(float number) {
+//    long i;
+//    float x2;
+
+//    x2 = number * 0.5f;
+//    i = *(long*)&number;
+//    i = 0x5f3759df - ( i >> 1);
+//    number = *(float*)&i;
+//    number = number * (1.5f - (x2 * number * number));
+
+//    return number;
+//}

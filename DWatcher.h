@@ -31,6 +31,8 @@ private:
     int _refs;
     void *_data;
 };
+
+
 template <class DataType>
 class DAbstractWatcher {
 
