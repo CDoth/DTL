@@ -199,6 +199,13 @@ private:
     iterator _end() {return data + size;}
     const_iterator _end() const {return data + size;}
 
+    void __reserveUp(int s) {
+        __reserve(alloced + s, __metatype());
+    }
+    void _reserve(int s) {
+        __reserve(s, __metatype());
+    }
+    //=================================================================
     void __reserve(int s, _direct_placement_layer) {
 
 //        std::cout << "__reserve: size: " << s
@@ -242,17 +249,90 @@ private:
             __reserve(s, __metatype());
         }
     }
-    void __reserveUp(int s) {
-        __reserve(alloced + s, __metatype());
-    }
     StoredType *__getPlace() {
         __reserveUp();
         return data + size++;
     }
-    void _reserve(int s) {
-        __reserve(s, __metatype());
-    }
+    //==============================================================
+    void __reserve_debug(int s, _direct_placement_layer) {
 
+
+        if(!__trivial_copy || !__trivial_destruct) {
+
+            StoredType *p = get_zmem<StoredType>(s);
+            StoredType *_p = p;
+            auto b = data;
+            auto e = data + size;
+            while(b!=e) {
+                new (_p) T(*b);
+                b->~T();
+                ++_p; ++b;
+            }
+            free_mem(data);
+            data = p;
+
+
+
+            std::cout << "__reserve_debug (_direct_placement_layer) [untrivial]:"
+                      << " data: " << (void*)data
+                      << " alloced: " << alloced
+                      << " size: " << size
+                      << std::endl;
+
+        } else {
+//            data = reget_mem(data, s);
+            data = (StoredType*)realloc(data, sizeof(StoredType) * s);
+
+            std::cout << "__reserve_debug (_direct_placement_layer) [trivial]:"
+                      << " data: " << (void*)data
+                      << " realloc size: " << s
+                      << " alloced: " << alloced
+                      << " size: " << size
+                      << std::endl;
+
+        }
+        alloced = s;
+    }
+    void __reserve_debug(int s, _undirect_placement_layer) {
+
+
+
+        data = reget_mem(data, s);
+        alloced = s;
+
+        std::cout << "__reserve_debug (_undirect_placement_layer):"
+                  << " data: " << (void*)data
+                  << " alloced: " << alloced
+                  << " size: " << size
+                  << std::endl;
+    }
+    void __reserveUp_debug() {
+        if(alloced == size) {
+            int s = ( size + 1 ) * 2;
+
+            __reserve_debug(s, __metatype());
+
+            std::cout << "__reserveUp_debug:"
+                      << " alloced: " << alloced
+                      << " size: " << size
+                      << std::endl;
+        }
+    }
+    StoredType *__getPlace_debug() {
+        __reserveUp_debug();
+
+        auto place = data + size;
+
+        std::cout << "__getPlace_debug:"
+                  << " data: " << (void*)data
+                  << " place: " << (void*)place
+                  << " size: " << size
+                  << " alloced: " << alloced
+                  << " last place: " << data + alloced
+                  << std::endl;
+        ++size;
+        return place;
+    }
 private:
     T& __ref(int i, _direct_placement_layer) {return data[i];}
     T& __ref(int i, _undirect_placement_layer) {return *data[i];}
@@ -455,7 +535,30 @@ private:
         }
     }
     void _push() { __push(__getPlace(), __metatype()); }
-    void _push(const T &src) { __push(__getPlace(), src, __metatype()); }
+    void _push(const T &src) {
+        __push(__getPlace(), src, __metatype());
+    }
+    void _push_debug(const T &src) {
+
+        __push_direct_debug(__getPlace_debug(), src, __metatype());
+
+//        auto p = __getPlace_debug();
+//        std::cout << "_push_debug: " << (void*)p
+//                  << std::endl;
+
+    }
+    void __push_direct_debug(StoredType *place, const T &src, _direct_placement_layer) {
+        if(__trivial_copy) {
+
+//            std::cout << "__push_direct_debug: " << (void*)place
+//                      << " data: " << src
+//                      << std::endl;
+
+            *place = src;
+        } else {
+            new (place) T(src);
+        }
+    }
 
     void __push(StoredType *place, _direct_placement_layer) {
         if(__trivial) {
@@ -588,6 +691,9 @@ public:
     void append(const T &t) { //+, +, +
         detach();
         w.data()->_push(t);
+    }
+    void append_debug(const T &t) {
+        w.data()->_push_debug(t);
     }
     void append(const T &t, int n) { //+, +, +
         if(n > 0) {

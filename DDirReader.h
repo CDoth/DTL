@@ -6,6 +6,8 @@
 #include <dirent.h>
 #include <fstream>
 
+#include <DArray.h>
+
 size_t get_file_size(const char* path);
 size_t get_file_size(const std::string &path);
 std::string getShortSize(size_t bytes);
@@ -46,10 +48,11 @@ std::string path_get_last_section(const std::string &path);
 
 
 //#define DDIR_STORE_FILE_SIZE
-class Directory;
+
+
+class DDirectory;
 class DDirReader;
-class FileDescriptor
-{
+class FileDescriptor {
 public:
     FileDescriptor();
     ~FileDescriptor();
@@ -59,127 +62,118 @@ public:
     const char* getName() const;
     const char* getPath() const;
     int getSize() const;
+    std::string getShortSize() const;
+    int level() const;
 
-    Directory* getRoot();
-    const Directory* getRoot() const;
+    DDirectory* getRoot();
+    const DDirectory* getRoot() const;
 private:
     std::string path;
     std::string name;
     size_t size;
-    Directory *root;
-    friend class Directory;
+    std::string shortSize;
+    DDirectory *root;
+    friend class DDirectory;
+
+    void *opaque;
 };
-class Directory
-{
+typedef void*(*FileRegisterCallback)(FileDescriptor*, void*);
+typedef void (*FileExcludeCallback)(FileDescriptor*, void*);
+class DDirectory {
 public:
     typedef std::vector<FileDescriptor*>::iterator FileIterator;
     typedef std::vector<FileDescriptor*>::const_iterator ConstFileIterator;
 
-    FileIterator beginFiles();
-    ConstFileIterator constBeginFiles() const;
-    FileIterator endFiles();
-    ConstFileIterator constEndFiles() const;
+
+    bool open(const char *path, FileRegisterCallback reg = nullptr, void *regBase = nullptr);
+
+    bool v_addDirectory(const char *path, FileRegisterCallback reg, void *regBase);
+    bool v_addFile(const char *path,FileRegisterCallback reg, void *regBase);
+
+    DDirectory *v_addVirtualDirectory(std::string name);
+
+
+
 
     std::string getStdPath() const;
     std::string getStdName() const;
     const char* getPath() const;
     const char* getName() const;
-    size_t size() const;
-    FileDescriptor* getFile(size_t index);
-    const FileDescriptor* getFile(size_t index) const;
+    int getFilesNumber() const;
+    int getInnerDirsNumber() const;
+    size_t getTotalSize() const;
+    std::string getTotalShortSize() const;
+    int getLevel() const;
 
-    FileDescriptor* getFile(const std::string &name);
-    const FileDescriptor* getFile(const std::string &name) const;
+    FileDescriptor* getFile(int index);
+    const FileDescriptor* getFile(int index) const;
 
-    Directory();
-    ~Directory();
+    DDirectory* getInnerDirectory(int index);
+    const DDirectory* getInnerDirectory(int index) const;
+
+    std::string topology();
+    bool create(const std::string &topology);
+
+    void clear();
+
+    DDirectory();
+    ~DDirectory();
     friend class DDirReader;
 private:
-    void addFile(const char *name);
-    std::vector<FileDescriptor*> list;
-    std::string full_path;
-    std::string name;
+    bool updateTopology(std::string &t);
+    bool __create_lf_dirs(const std::string &topology, std::string::size_type &p);
+    std::string __create_extract_name(const std::string &t, std::string::size_type &p);
+
+    size_t initTotalSize();
+    bool open(int l, FileRegisterCallback reg, void *regBase);
+    bool addFile(const char *name, FileRegisterCallback reg, void *regBase);
+    bool addInnerDirectory(const char *name);
+    bool addObject(const char *name, FileRegisterCallback reg, void *regBase);
+
+
+    bool innerAddVirtualFile(const char *path, FileRegisterCallback reg, void *regBase);
+
+    DArray<FileDescriptor*> files;
+    DArray<DDirectory*> innerDirs;
+
+    bool bRootDir;
+    bool bVirtual;
+    int iLevel;
+
+    size_t iTotalSize;
+    std::string sTotalShortSize;
+    std::string sFullPath;
+    std::string sName;
 };
-class DDirReader
-{
+class DDirReader {
 public:
     DDirReader();
     ~DDirReader();
 
-    Directory* open(const char *path, const char *specific_name = nullptr);
-    int renew(const char *path_or_name);
+    void setFileRegistration(FileRegisterCallback reg, FileExcludeCallback exc, void *base);
 
-    typedef std::vector<Directory*>::iterator DirectoryIterator;
-    typedef std::vector<Directory*>::const_iterator ConstDirectoryIterator;
-    DirectoryIterator begin();
-    ConstDirectoryIterator constBegin() const;
-
-    DirectoryIterator end();
-    ConstDirectoryIterator constEnd() const;
-    size_t size() const;
+    DDirectory* open(const char *path);
+    DDirectory* createVirtual(const char *name);
 
 
-    Directory* getDirectory(size_t index);
-    const Directory* getDirectory(size_t index) const;
-public:
-    std::vector<Directory*> directories;
 
-    void init_log_context();
+    std::string topology();
+    bool create(const std::string &topology);
+
+
+    int size() const;
+    void clear();
+
+
+    DDirectory* getDirectory(int index);
+    const DDirectory* getDirectory(int index) const;
+private:
+    DArray<DDirectory*> directories;
+
+    FileRegisterCallback fileReg;
+    FileExcludeCallback fileExclude;
+    void *regBase;
+
 };
-/*
-    class _find_file_f
-    {
-    public:
-        _find_file_f(const char *key, bool with_ext, bool by_name) : _key (key), _with_ext(with_ext), _by_name(by_name) {}
-        bool operator()(const file_desc &fd) const
-        {
-            if(_with_ext)
-            {
-                if(_by_name)
-                    return fd.name == _key;
-                else
-                    return fd.path() == _key;
-            }
-            else
-            {
-                if(_by_name)
-                    return getBaseName(fd.name) == _key;
-                else
-                    return getBaseName(fd.path()) == _key;
-            }
-        }
-    private:
-        const char *_key;
-        bool _with_ext;
-        bool _by_name;
-    };
-inline int check_file(const DDirReader::dir *_dir, const std::string &file_name)
-{
-    for(size_t i=0;i!=_dir->file_list.size();++i)
-    {
-        if(_dir->file_list[i].name == file_name)
-        {
-            return i;
-        }
-    }
-    return -1;
-}
-*/
 
-/* //test block
-    DirReader dr;
-    dr.set_prefix("/root");
-    auto dir = dr.add_dir("DTL");
-    printf("dr size: %d\n", dr.size());
-
-    printf("dir: full_path: %s name: %s size: %d\n", dir->full_path.c_str(), dir->name.c_str(), dir->size);
-    auto db = dir->begin();
-    auto de = dir->end();
-    int i=0;
-    while( db != de )
-    {
-        printf("%d file: name: %s size: %d\n", i++, (*db).name().c_str(), (*db).size());
-        ++db;
-    }
- */
 #endif // DDIRREADER_H

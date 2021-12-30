@@ -50,6 +50,8 @@ public:
         DArray<sublex*> sub_lex;
         bool direct_mode;
         char *inner_special;
+        DArray<char> permittedSymbols;
+        bool onlyDigits;
         value_t skip;
     };
 
@@ -59,10 +61,13 @@ public:
     inline bool is_number(const lexeme& l);
     inline bool is_special(char c, raw s);
     bool base_equal(const lexeme& l, raw sample);
+    bool is_permitted_line(const lexeme &l, raw permitted, bool permitDigits);
 
 
 
     lexeme base(raw v, raw end, raw special = nullptr);
+    lexeme base_in_syms(raw v, raw end, char left, char right, raw special = nullptr);
+
     size_t sym_base_len(raw v, raw end, char c);
     lexeme sym_base(raw v, raw end, char c);
     lexeme strict_sym_base(raw v, raw end, char c, raw special = nullptr);
@@ -73,6 +78,7 @@ public:
     DArray<int> list(raw v, raw end = nullptr, raw special = nullptr, char sep = ',', read_context* context = nullptr );
     DArray<char> options(raw v, raw end = nullptr, raw special = nullptr, char prefix = '-', read_context* context = nullptr);
     int number(raw v, raw end, raw special = nullptr, read_context* context = nullptr);
+    lexeme numberLexeme(raw v, raw end, raw special = nullptr, read_context *context = nullptr);
     char option(raw v, raw end, raw special = nullptr, char prefix = '-', read_context* context = nullptr);
     lexeme find(raw v, raw end, raw rule, raw special = nullptr);
     void set_rule(raw rule);

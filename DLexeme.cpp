@@ -46,28 +46,39 @@ bool DLexeme::base_equal(const lexeme &l, DLexeme::raw sample)
 {
     return strlen(sample) == (size_t)l.size && buffer_compare(l.begin, sample, l.size);
 }
+bool DLexeme::is_permitted_line(const DLexeme::lexeme &l, DLexeme::raw permitted, bool permitDigits) {
+    raw b = l.begin;
+    raw e = l.end;
+    char s;
 
-DLexeme::lexeme DLexeme::base(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special)
-{
+//    std::cout << "is_permitted_line:";
+//    lexeme_print(l);
+
+    while(b!=e) {
+        s = *b++;
+
+        if(!is_special(s, permitted) && (!permitDigits || (permitDigits && !is_digit(s)))) {
+            return false;
+        }
+    }
+    return true;
+}
+DLexeme::lexeme DLexeme::base(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special) {
     lexeme l = share_null;
     if(v == nullptr) return l;
     if(!special) special = " ";
     void *start = (void*)v;
-//    qDebug()<<"base::: start:"<<start<<"end:"<<(void*)end;
     for(;v != end;++v)
     {
         if(end == nullptr && *v == '\0')
         {
-//            qDebug()<<"end in nullptr and sym is term zero";
             break;
         }
 
-//        qDebug()<<"base: sym:"<<*v<<"start:"<<start;
         if(is_special(*v, special))
         {
             if(l.begin)
             {
-//                qDebug()<<"----sym:"<<*v<<"is special";
                 break;
             }
         }
@@ -76,13 +87,23 @@ DLexeme::lexeme DLexeme::base(DLexeme::raw v, DLexeme::raw end, DLexeme::raw spe
             if(!l.begin) l.begin = v;
             ++l.size;
         }
-//        if(*(v+1) == '\0') qDebug()<<"next sym is term 0";
-//        if((v+1) == end) qDebug()<<"next sym is END";
     }
     l.end = l.begin + l.size;
-
-//    qDebug()<<"return lexeme:"<<(void*)l.begin;
     return l;
+}
+DLexeme::lexeme DLexeme::base_in_syms(DLexeme::raw v, DLexeme::raw end, char left, char right, DLexeme::raw special) {
+    if(v == nullptr) {
+        return share_null;
+    }
+    lexeme leftEdge = sym_base(v, end, left);
+    if(leftEdge.begin == nullptr) {
+        return share_null;
+    }
+    lexeme rightEdge = sym_base(leftEdge.end, end, right);
+    if(rightEdge.begin == nullptr) {
+        return share_null;
+    }
+    return base(leftEdge.end, rightEdge.begin-1, special);
 }
 size_t DLexeme::sym_base_len(DLexeme::raw v, DLexeme::raw end, char c)
 {
@@ -156,25 +177,12 @@ DArray<int> DLexeme::list(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special
     lexeme l;
     read_context* c = context? context:default_context;
     if(!special) special = " ,";
-    l = base(v, end, special);
-    while(l.begin)
-    {
-        if(is_number(l))
-        {
-            value_t number = atoi(l.begin);
-            if(
-                  (!c->use_min      || number >= c->min)
-               && (!c->use_max      || number <= c->max)
-               && (!c->unique       || !list.count(number))
-               && (!c->max_size     || (index_t)list.size() < c->max_size )
-               ) list.push_back(number);
-            l = strict_sym_base(l.end, end, sep, special);
-        }
-        else
-        {
-            if(l.size > 1 && !list.empty()) break;
-            l = base(l.end,end, special);
-        }
+    l = numberLexeme(v, end, special, c);
+    while(l.begin) {
+
+        list.push_back(lexeme_to_number(l));
+        l = numberLexeme(l.end, end, special, c);
+
     }
     return list;
 }
@@ -223,6 +231,27 @@ int DLexeme::number(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special, DLex
     }
     return 0;
 }
+DLexeme::lexeme DLexeme::numberLexeme(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special, DLexeme::read_context *context) {
+
+    value_t number;
+    lexeme l;
+    read_context* c = context? context:default_context;
+    if(!special) special = " ,";
+    l = base(v, end, special);
+    while(l.begin) {
+        v = l.end;
+        if(is_number(l)) {
+            number = atoi(l.begin);
+            if(
+                  (!c->use_min  || number >= c->min)
+               && (!c->use_max  || number <= c->max)
+               ) return l;
+        }
+        l = base(l.end, end, special);
+    }
+
+    return share_null;
+}
 char DLexeme::option(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special, char prefix, DLexeme::read_context *context)
 {
     char o;
@@ -259,14 +288,11 @@ DLexeme::lexeme DLexeme::find(DLexeme::raw v, DLexeme::raw end, DLexeme::raw rul
     lexeme l;
     DLexeme::raw __special = special ? special : c.inner_special;
 
-//    qDebug()<<"find: __special:"<<__special;
     value_t cnt = 0;
     while ( (l = base(v, end, __special)).begin )
     {
-//        qDebug()<<"check lexeme:"<<lexeme_to_string(l).c_str();
         if(_check_lex(&l, &c))
         {
-//            qDebug()<<"---- check: true";
             if(++cnt > c.skip) return l;
         }
         v = l.end;
@@ -306,10 +332,11 @@ bool DLexeme::check_rule(DLexeme::raw rule)
 
 void DLexeme::shift_lex(DLexeme::lexeme *l, int s)
 {
-    if(l->begin && s <= l->size)
-    {
+    if(l->begin && s <= l->size) {
+
         l->begin += s;
         l->size  -= s;
+
     }
     else *l = share_null;
 }
@@ -320,6 +347,7 @@ int DLexeme::read_rule(DLexeme::raw rule, lex_context &c)
     c.skip = 0;
     c.direct_mode = true;
     c.inner_special = NULL;
+    c.onlyDigits = false;
 
     lexeme l;
     raw special1 = " =|:>#,";
@@ -389,7 +417,29 @@ int DLexeme::read_rule(DLexeme::raw rule, lex_context &c)
                     val_p = &c.skip;
                     undefined_block = 0;
                 }
+                if(undefined_block && base_equal(l, "permsym")) {
+                    if( (local = sym_base(block_it, block_end, ':')).begin) {
 
+
+                        while( (local = base(local.end, block_end, " ,")).begin ) {
+
+                            if(base_equal(local, "dig")) {
+                                c.onlyDigits = true;
+                            }
+                            if(local.size == 1 && *local.begin != ' ') {
+                                c.permittedSymbols.push_back(*local.begin);
+                            }
+                        }
+                    }
+                    undefined_block = 0;
+                }
+//                if(undefined_block && base_equal(l, "leftsym")) {
+//                    if( (local = base_in_syms(local.begin, block_end, '[', ']')).begin) {
+//                        if(local.size == 1) {
+//                            if()
+//                        }
+//                    }
+//                }
 
                 if(val_p
                    && ( block_it = sym_base(block_it, block_end, ':').begin )
@@ -415,15 +465,24 @@ int DLexeme::read_rule(DLexeme::raw rule, lex_context &c)
                     sl->type = 0;
                     sl->l = l;
 
+                    // <.=3>
+//                    std::cout << "----- read_rule: ";
+//                    lexeme_print(l);
+
                     if(*(l.begin-1) == '#') sl->type = 2;
                     else if(*(l.begin-1) == '=') sl->type = 3;
                     else if(*l.end == '#') sl->type = 1;
 
-                    if(sl->type == 0 && strict_sym_base(l.end, block_end, ':').begin)
+
+                    if(
+                            (sl->type == 0 &&
+                            strict_sym_base(l.end, block_end, ':').begin)
+                            )
                     {
                         l = base(l.end, block_end, special1);
                         if(is_number(l)) sl->n = atoi(l.begin);
                     }
+
 
                     if(head_sl) sl->next_or = head_sl;
                     head_sl = sl;
@@ -439,6 +498,13 @@ int DLexeme::read_rule(DLexeme::raw rule, lex_context &c)
 bool DLexeme::__check_block(DLexeme::sublex *sl, DLexeme::lexeme *l, bool direct_mode)
 {
     int s=0;
+
+//    std::cout << "__check_block: subblex: ";
+//    lexeme_print(sl->l);
+//    std::cout << "lexeme: ";
+//    lexeme_print(*l);
+//    std::cout << "direct_mode: " << direct_mode << std::endl;
+
     while(sl)
     {
         if(sl->l.size <= l->size)
@@ -446,15 +512,39 @@ bool DLexeme::__check_block(DLexeme::sublex *sl, DLexeme::lexeme *l, bool direct
             {
             case 0:
             {
+                int local_shift = 0;
                 bool res = true;
                 for(int i=0;i!=sl->n;++i)
                 {
-                    if( (s = find_bytes_pos(sl->l.begin, l->begin + s, sl->l.size, l->size - s) ) < 0)
+
+
+
+//                    std::cout << " find start: [" << l->begin + local_shift << "]"
+//                              << " local shift: [" << local_shift << "]"
+//                              << std::endl;
+
+                    s = find_bytes_pos(sl->l.begin, l->begin + local_shift, sl->l.size, l->size - local_shift);
+
+//                    std::cout << "proc type0: " << i
+//                              << " find pos: " << s
+//                              << std::endl;
+
+
+                    if( s < 0)
                     {
-                        res = false;
-                        break;
+//                        res = false;
+//                        break;
+                        return false;
                     }
                     else ++s;
+                    local_shift += s;
+
+                }
+                s = find_bytes_pos(sl->l.begin, l->begin + local_shift, sl->l.size, l->size - local_shift);
+                // If main lexeme contain at least one (or more) sublex this is wrong lexeme
+                if(s >= 0) {
+//                    std::cout << "extra sublex on: " << s << std::endl;
+                    return false;
                 }
                 if(res) return res;
                 if(direct_mode && s>=0) shift_lex(l, s+sl->l.size);
@@ -464,15 +554,31 @@ bool DLexeme::__check_block(DLexeme::sublex *sl, DLexeme::lexeme *l, bool direct
 
             case 1: if( buffer_compare(sl->l.begin, l->begin, sl->l.size)) {if(direct_mode) shift_lex(l, sl->l.size);return true;} break;
             case 2: if( buffer_compare(sl->l.begin, l->begin + (l->size - sl->l.size), sl->l.size)) {if(direct_mode) *l = share_null; return true;} break;
-            case 3: if( sl->l.size == l->size && buffer_compare(sl->l.begin, l->begin, l->size)) {if(direct_mode) *l = share_null;return true;} break;
+            case 3:
+                if( sl->l.size == l->size && buffer_compare(sl->l.begin, l->begin, l->size)) {
+                    if(direct_mode)
+                        *l = share_null;
+                    return true;
+                }
+                break;
 
             }
         sl = sl->next_or;
     }
     return false;
 }
-bool DLexeme::_check_lex(DLexeme::lexeme *l, DLexeme::lex_context *c)
-{
+bool DLexeme::_check_lex(DLexeme::lexeme *l, DLexeme::lex_context *c) {
+
+//    std::cout << "DLexeme::_check_lex: ";
+//    lexeme_print(*l);
+//    FOR_VALUE(c->sub_lex.size(), i) {
+//        lexeme_print(c->sub_lex[i]->l);
+//        std::cout << "n: " << c->sub_lex[i]->n
+//         << " type: " << c->sub_lex[i]->type
+//         << " next: " << c->sub_lex[i]->next_or
+//         << std::endl;
+//    }
+
     if(
             l->size >= c->min_len
             && (!c->max_len || l->size <= c->max_len)
@@ -481,6 +587,16 @@ bool DLexeme::_check_lex(DLexeme::lexeme *l, DLexeme::lex_context *c)
         bool wrong_size = c->len_wl.empty() ? false : true;
         for(int i=0;i!=c->len_wl.size();++i) if(l->size == c->len_wl[i]) wrong_size = false;
         if(wrong_size) return false;
+
+//        std::cout << "DLexeme::_check_lex: permitted: " << c->permittedSymbols.size() << " onlyDigits: " << c->onlyDigits << std::endl;
+        if(c->permittedSymbols.size() || c->onlyDigits) {
+            bool r = is_permitted_line(*l, c->permittedSymbols.begin(), c->onlyDigits);
+//            std::cout << "DLexeme::_check_lex: is_permitted_line: " << r << std::endl;
+
+            if( r == false) {
+                return false;
+            }
+        }
 
         auto b = c->sub_lex.begin();
         auto e = c->sub_lex.end();

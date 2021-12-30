@@ -138,12 +138,8 @@ float sym_partOf(float PART, float TOTAL)
 float xrand()
 {
     seed = seed * seed + seed;
-//    float v = partOf(seed, float(UINT_MAX));
-
-
-
-//    return v;
-    return -404.0;
+    float v = partOf(seed, unsigned(-1));
+    return v;
 }
 float xrand(float range)
 {
