@@ -211,6 +211,7 @@ const DDirectory *FileDescriptor::getRoot() const
 {
     return root;
 }
+
 //========================================== Directory
 bool DDirectory::addFile(const char *name, FileRegisterCallback reg, void *regBase) {
 
@@ -484,10 +485,10 @@ const DDirectory *DDirectory::getInnerDirectory(int index) const {
     }
     return nullptr;
 }
-std::string DDirectory::topology() {
+std::string DDirectory::topology(bool includeFiles) {
 
     std::string t;
-    if( !updateTopology(t) ) {
+    if( !__updateTopology(t, includeFiles) ) {
         return std::string();
     }
 
@@ -593,7 +594,7 @@ std::string DDirectory::__create_extract_name(const std::string &t, std::string:
         return std::string();
     }
 }
-bool DDirectory::updateTopology(std::string &t) {
+bool DDirectory::__updateTopology(std::string &t, bool includeFiles) {
 
     if(innerDirs.empty()) {
         return true;
@@ -604,7 +605,7 @@ bool DDirectory::updateTopology(std::string &t) {
         t.append(sName);
         t.append("/");
     }
-    if(innerDirs.size()) {
+    if(innerDirs.size() || (includeFiles && files.size())) {
         t.append("!I");
     }
     FOR_VALUE(innerDirs.size(), i) {
@@ -612,12 +613,22 @@ bool DDirectory::updateTopology(std::string &t) {
         t.append("!D");
         t.append(d->getName());
         t.append("/");
-        d->updateTopology(t);
+        d->__updateTopology(t, includeFiles);
     }
-    if(innerDirs.size()) {
+    if(includeFiles) {
+        FOR_VALUE(files.size(), i) {
+            FileDescriptor *fd = files[i];
+            t.append("!F");
+            t.append(fd->name);
+            t.append("/");
+
+        }
+    }
+    if(innerDirs.size() || (includeFiles && files.size())) {
         t.append("!O");
     }
     return true;
+
 }
 
 DDirectory::DDirectory() {
@@ -629,6 +640,8 @@ DDirectory::DDirectory() {
 DDirectory::~DDirectory() {
     clear();
 }
+
+
 
 
 size_t DDirectory::initTotalSize() {
@@ -766,7 +779,6 @@ bool DDirReader::create(const std::string &t) {
 
     return true;
 }
-
 
 
 

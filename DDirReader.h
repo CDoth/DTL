@@ -6,7 +6,7 @@
 #include <dirent.h>
 #include <fstream>
 
-#include <DArray.h>
+#include "DArray.h"
 
 size_t get_file_size(const char* path);
 size_t get_file_size(const std::string &path);
@@ -111,7 +111,7 @@ public:
     DDirectory* getInnerDirectory(int index);
     const DDirectory* getInnerDirectory(int index) const;
 
-    std::string topology();
+    std::string topology(bool includeFiles);
     bool create(const std::string &topology);
 
     void clear();
@@ -120,7 +120,7 @@ public:
     ~DDirectory();
     friend class DDirReader;
 private:
-    bool updateTopology(std::string &t);
+    bool __updateTopology(std::string &t, bool includeFiles);
     bool __create_lf_dirs(const std::string &topology, std::string::size_type &p);
     std::string __create_extract_name(const std::string &t, std::string::size_type &p);
 
