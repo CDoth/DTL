@@ -27,6 +27,5 @@ DDualWatcher *DDualWatcher::otherSide()
 }
 */
 
+//123
 
-WatcherMode invertSide(WatcherMode m)
-{return (m == ShareWatcher) ? CloneWatcher : ShareWatcher;}

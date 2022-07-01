@@ -1,6 +1,7 @@
 #include "DLexeme.h"
 #include "daran.h"
 
+
 void DLexeme::_init_deafault_context()
 {
     default_context = get_mem<read_context>(1);
@@ -147,8 +148,7 @@ DLexeme::lexeme DLexeme::sym_stop_on(DLexeme::raw v, DLexeme::raw end, char c)
     }
     return {v, v+1, 1};
 }
-DArray<int> DLexeme::numbers(DLexeme::raw v, DLexeme::raw end, DLexeme::read_context *context, DLexeme::raw special)
-{
+DArray<int> DLexeme::numbers(DLexeme::raw v, DLexeme::raw end, DLexeme::read_context *context, DLexeme::raw special) {
     DArray<int> list;
     lexeme l;
     read_context* c = context? context:default_context;
@@ -178,7 +178,10 @@ DArray<int> DLexeme::list(DLexeme::raw v, DLexeme::raw end, DLexeme::raw special
     read_context* c = context? context:default_context;
     if(!special) special = " ,";
     l = numberLexeme(v, end, special, c);
+    int number = 0;
     while(l.begin) {
+
+        number = lexeme_to_number(l);
 
         list.push_back(lexeme_to_number(l));
         l = numberLexeme(l.end, end, special, c);
@@ -649,3 +652,4 @@ int lexeme_force_number(const DLexeme::lexeme &l, int big_endian)
 
     return v;
 }
+

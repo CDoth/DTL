@@ -4,24 +4,392 @@
 #include "DWatcher.h"
 #include "dmem.h"
 
-//#include <QDebug>
-//host check
-//123
+struct __d_valid_type {};
+class __d_invalid_type { __d_invalid_type() {}};
 
+#define TEMPLATE_PERMISSION__INTEGRATE_TYPES \
+    public std::conditional<std::is_integral<T>::value \
+    || std::is_floating_point<T>::value \
+    || std::is_pointer<T>::value, \
+__d_valid_type, __d_invalid_type>::type
+
+#define __INTEGRAL(_T_) (std::is_integral<_T_>::value)
+#define __FLOATING(_T_) (std::is_floating_point<_T_>::value)
+#define __POINTER(_T_) (std::is_pointer<_T_>::value)
+
+#define __PERMISSIONS(X) public std::conditional<X, __d_valid_type, __d_invalid_type>::type
+#define __PERMISSIONS__TRIV_INT(_T_) __PERMISSIONS(__INTEGRAL(_T_) || __FLOATING(_T_) || __POINTER(_T_))
 
 
 enum DArrayMemManager {Direct, Undirect, Auto};
 template <class T, DArrayMemManager memType>
 class DArray;
-template <class T, DArrayMemManager memType>
-class DReadArray;
 
 
+template <class _T> struct __const_type {typedef _T const type;};
+template <class _T> struct __const_type<_T*> {typedef _T const * type;};
+
+
+template <class T>
+class DTrivialArrayData : __PERMISSIONS__TRIV_INT(T) {
+public:
+    typedef T* iterator;
+    typedef const T* const_iterator;
+    typedef const typename __const_type<T>::type const_type;
+    typedef T StoredType;
+    typedef const T ConstStoredType;
+
+    DTrivialArrayData() {
+        data = nullptr;
+        alloced = 0;
+        size = 0;
+    }
+    DTrivialArrayData(const DTrivialArrayData &d) {
+        data = nullptr;
+        alloced = 0;
+        size = 0;
+        copy_array(d);
+    }
+    DTrivialArrayData(const T *d, int s) {
+        data = nullptr;
+        alloced = 0;
+        size = 0;
+        copy_data(d, s);
+    }
+
+    DTrivialArrayData& operator=(const DTrivialArrayData &d) { copy_array(d); return *this; }
+    ~DTrivialArrayData() { __dropAll(); }
+public:   // ===================== OPEN LAYER:
+    // info:
+    inline int available() const {return alloced - size;}
+    inline int getSize() const {return size;}
+    inline int getBytesSize() const {return size * sizeof(T);}
+    inline int capacity() const {return alloced;}
+
+    // mem management:
+    void reserve(int s) {
+        if(s > alloced) __reserve(s);
+    }
+    void reserveUp(int n) {
+        reserve(alloced + n);
+    }
+
+    // copying data:
+    void copy_array(const DTrivialArrayData &d) {
+
+        reserve(d.size);
+        size = d.size;
+        copy_mem(data, d.data, d.size);
+
+    }
+    void copy_array(const DTrivialArrayData &d, int __size) {
+        __size = __size > d.size ? d.size : __size;
+
+        reserve(__size);
+        size = __size;
+        copy_mem(data, d.data, size);
+    }
+    void copy_data(const T *src, int srcSize) {
+
+        reserve(srcSize);
+        size = srcSize;
+        copy_mem(data, src, srcSize);
+
+    }
+    void copy_tail(const DTrivialArrayData &d) {
+        reserve(d.size());
+        copy_mem(data + size, d.data + size, d.size - size);
+        size = d.size();
+    }
+    void copy_tail(const DTrivialArrayData &d, int tailSize) {
+        reserve(size + tailSize);
+        copy_mem(data + size, d.data + size, tailSize);
+        size += tailSize;
+    }
+
+    // adding one:
+    void push() { __push(__getPlace()); }
+    void push(const T &src) { __push(__getPlace(), src); }
+
+    void insert_line(int insertTo, int n) {
+        reserve(size + n);
+        __moveObjects( (data + insertTo + n), (data + insertTo), (size - insertTo) ) ;
+        zero_mem(data + insertTo, n);
+        size += n;
+    }
+    void insert(int insertTo) {
+        __reserveUp();
+        __moveObjects( (data + insertTo + 1), (data + insertTo), (size - insertTo));
+        __push(data + insertTo);
+        ++size;
+    }
+    void insert(int insertTo, const T &src) {
+        __reserveUp();
+        __moveObjects( (data + insertTo + 1), (data + insertTo), (size - insertTo));
+        __push(data + insertTo, src);
+        ++size;
+    }
+    void insert_rough(T *insertTo, const T &src) {
+        __reserveUp();
+        __moveObjects( insertTo + 1, insertTo, (data + size) - insertTo);
+        __push(insertTo, src);
+        ++size;
+    }
+
+    // adding several:
+    void push_array(const DTrivialArrayData &d) { __push_array(d); }
+    void push_array(const DTrivialArrayData &d, int n) { __push_array(d, n);}
+    void push_data(const T *src, int n) {
+
+        if(available() < n) {
+            reserveUp(n - available());
+        }
+        copy_mem(data + size, src, n);
+        size += n;
+    }
+    void push_empty_line(int n) {
+        reserve(size + n);
+        zero_mem(data + size, n);
+        size += n;
+    }
+
+    // removing:
+    void remove_by_index(int i) {
+        __moveObjects( (data + i),  (data + i + 1),  (size - i - 1) );
+        --size;
+    }
+    void remove_last() {
+        --size;
+    }
+    int remove(const_type &t) {
+        int i = index_of(t);
+        if(i != -1) remove_by_index(i);
+        return i;
+    }
+    void drop() {
+        zero_mem(data, size);
+        size = 0;
+    }
+    void fdrop() {
+        size = 0;
+    }
+    void drop_tail(int firstSaved) {
+        zero_mem(data + firstSaved, size - firstSaved);
+        size = firstSaved;
+    }
+    void fdrop_tail(int firstSaved) {
+        size = firstSaved;
+    }
+    void cut(int cutBegin, int cutEnd) {
+        __moveObjects(data + cutBegin, data + cutEnd, size - cutEnd);
+        size -= (cutEnd-cutBegin);
+    }
+
+    // data access:
+    inline T& ref(int i) {return __ref(i);}
+    inline const T& ref(int i) const {return __ref(i);}
+    inline T* ptr(int i) {return __ptr(i);}
+    inline const T* ptr(int i) const {return __ptr(i);}
+
+    inline T * changableData() {return data;}
+    inline const T * constData() const {return data;}
+    iterator begin() {return data;}
+    const_iterator begin() const {return data;}
+    iterator end() {return data + size;}
+    const_iterator end() const {return data + size;}
+
+    // analysis (const):
+    int index_of(const_type &t, int from = 0, int to = 0) const {
+        if(from > to)
+            std::swap(from, to);
+        to = to ? to : size;
+        int i = 0;
+        auto b = begin() + from;
+        auto e = begin() + to;
+        while(b!=e) {
+            if(*b++ == t) {
+                return i + from;
+            }
+            ++i;
+        }
+        return -1;
+    }
+    int count(const_type &t, int from = 0, int to = 0) const {
+        if(from > to)
+            std::swap(from, to);
+        to = to ? to : size;
+        int c = 0;
+        auto b = begin() + from;
+        auto e = begin() + to;
+        while(b!=e) {
+            if(*b++ == t) ++c;
+        }
+        return c;
+    }
+    bool contain(const_type &t, int from = 0, int to = 0) const {
+        if(from > to)
+            std::swap(from, to);
+        to = to ? to : size;
+        auto b = begin() + from;
+        auto e = begin() + to;
+        while(b!=e) {
+            if(*b++ == t) return true;
+        }
+        return false;
+    }
+
+    // special:
+    inline void swap(int pos1, int pos2) { std::swap(data[pos1], data[pos2]); }
+    void relocate(int dstPos, int srcPos, int n) {
+
+        DTrivialArrayData _d;
+        _d._reserve(n);
+        copy_mem(_d.data, data + srcPos, n);
+
+        if(srcPos > dstPos) {
+            move_mem(data + dstPos + n, data + dstPos, srcPos - dstPos);
+        } else {
+            move_mem(data + srcPos, data + srcPos + n, dstPos - srcPos);
+        }
+        copy_mem(data + dstPos, _d.data, n);
+    }
+    inline void sort() { __sort(); }
+
+    // special with binary sorted data:
+    int inner_bin_find(const_type &t, int from, int n) const {
+
+
+        if(n == 0) return -1;
+        if(n == 1) return t == ref(from) ? from : -1;
+
+        const int local_pos = ((n-1) / 2) ;
+        const int pos = from + local_pos;
+
+
+
+        const T &value = ref(pos);
+
+        if( t == value ) return pos;
+
+
+        if (t > value) {
+            return inner_bin_find(t, pos + 1, n - (local_pos + 1));
+        } else {
+            return inner_bin_find(t, from, local_pos);
+        }
+    }
+    inline int bin_find(const_type &t) const { return inner_bin_find(t, 0, size); }
+    int unique_insert_with_sort_pos(const_type &t, int from, int n) const {
+
+        if(n == 0) return from;
+
+
+        const int local_pos = ((n-1) / 2); // 0
+        const int pos = from + local_pos; // 0
+
+        const T &value = ref(pos);
+
+        if( t == value ) return -1;
+
+        if (t > value) {
+            return unique_insert_with_sort_pos(t, pos + 1, n - (local_pos + 1));
+        } else {
+            return unique_insert_with_sort_pos(t, from, local_pos);
+        }
+    }
+    int unique_insert_with_sort(const_type &t) {
+        int pos = unique_insert_with_sort_pos(t, 0, size);
+        if(pos < 0) return pos;
+        if(pos == size) {
+            push(t);
+            return pos;
+        }
+        if(pos < size) {
+            insert(pos, t);
+            return pos;
+        }
+    }
+
+private:  // ===================== UNDERLAYER:
+
+    // mem management:
+    void __reserve(int s) {
+        data = reget_mem(data, s);
+        alloced = s;
+    }
+    void __reserveUp() {
+        if(alloced == size) {
+            int s = ( size + 1 ) * 2;
+            __reserve(s);
+        }
+    }
+    T *__getPlace() {
+        __reserveUp();
+        return data + size++;
+    }
+
+    // adding one:
+    void __push(T *place) { *place = T(); }
+    void __push(T *place, const T &src) { *place = src; }
+
+    // adding several:
+    void __push_array(const DTrivialArrayData &d) {
+        if(available() < d.size) {
+            reserve(size + d.size);
+        }
+        copy_mem(data + size, d.data, d.size);
+        size += d.size;
+    }
+    void __push_array(const DTrivialArrayData &d, int n) {
+        if(available() < n) {
+            reserve(size + n);
+        }
+        copy_mem(data + size, d.data, n);
+        size += n;
+    }
+
+    // data access:
+    inline T& __ref(int i) {return data[i];}
+    inline const T& __ref(int i) const {return data[i];}
+    inline T* __ptr(int i) {return data + i;}
+    inline const T* __ptr(int i) const {return data + i;}
+    inline void __set_value(int i, const T &t) { data[i] = t; }
+    inline void __set_value(T *pos, const T &t) { *pos = t; }
+
+    // destructing:
+    void __dropAll() {
+        free_mem(data);
+        data = nullptr;
+        alloced = 0;
+        size = 0;
+    }
+
+    // special:
+    void __moveObjects(T *dst, T *src, int n) {
+        memmove(dst, src, range<T>(n));
+    }
+    void __sort() {
+        std::qsort(
+                    data,
+                    size,
+                    sizeof(T),
+                    [](const void *x, const void *y) {
+                        if(*reinterpret_cast<const T*>(x) > *reinterpret_cast<const T*>(y)) return 1;
+                        if(*reinterpret_cast<const T*>(x) < *reinterpret_cast<const T*>(y)) return -1;
+                        return 0;
+                    }
+
+                    );
+    }
+
+private:
+    T *data;
+    int alloced;
+    int size;
+};
 
 template <class T, DArrayMemManager memType>
 class DArrayData {
-    friend class DArray<T, memType>;
-    friend class DReadArray<T, memType>;
     enum {
         __trivial = std::is_trivial<T>::value,
         __trivial_copy = std::is_trivially_copyable<T>::value,
@@ -144,6 +512,7 @@ public:
     typedef typename std::conditional< (__metatype::direct_placement), const T, const T*>::type ConstStoredType;
     typedef StoredType* rawIterator;
     typedef ConstStoredType* constRawIterator;
+    typedef const typename __const_type<T>::type const_type;
 
 
 public:
@@ -151,66 +520,316 @@ public:
     DArrayData() :
         data(nullptr),
         alloced(0),
-        size(0),
-        outterData(false)
-    {}
+        size(0)
+    {
+    }
     DArrayData(const DArrayData &d) :
     data(nullptr),
     alloced(0),
-    size(0),
-    outterData(false)
-    { _force_data(d); }
-    DArrayData(DArrayData &d)  :
-    data(nullptr),
-    alloced(0),
-    size(0),
-    outterData(false)
-    { _force_data(d); }
+    size(0)
+    {
+        force_array(d);
+    }
+
     DArrayData& operator=(const DArrayData &d) { _force_data(d); return *this;}
     DArrayData& operator=(DArrayData &d) { _force_data(d); return *this;}
-    ~DArrayData() { _dropAll(); }
+    ~DArrayData() { __dropAll(); }
 private:
     StoredType *data;
     int alloced;
     int size;
-    bool outterData;
-private:
+public:   // ===================== OPEN LAYER:
 
-    void _set_source(T *src, int srcSize) {
-        _dropAll();
-        data = src;
+    // info:
+    inline int available() const {return alloced - size;}
+    inline int getSize() const {return size;}
+    inline int getBytesSize() const {return size * sizeof(StoredType);}
+    inline int capacity() const {return alloced;}
+
+    // mem management:
+    void reserve(int s) {
+        if(s > alloced)
+            __reserve(s, __metatype());
+    }
+    void reserveUp(int n) {
+        reserve(alloced + n);
+    }
+
+    // copying data:
+    void copy_array(const DArrayData &d) {
+        if(__metatype::direct_placement && __trivial_copy) {
+            copy_mem(data, d.data, std::min(size, d.size));
+        } else {
+            int s = std::min(size, d.size);
+            auto b = data;
+            auto e = data + s;
+            auto b_src = d.data;
+            while(b!=e) {
+                _set_value(b++, *b_src++, __metatype());
+            }
+        }
+    }
+    void copy_data(const T *src, int srcSize) {
+
+        reserve(srcSize);
         size = srcSize;
-        alloced = srcSize;
+
+        if(__metatype::direct_placement && __trivial_copy) {
+            copy_mem(data, src, srcSize);
+        } else {
+            int s = srcSize;
+            auto b = data;
+            auto e = data + s;
+            auto b_src = src;
+            while(b!=e) {
+                __set_value(b++, *b_src++, __metatype());
+            }
+        }
     }
-    void _set_const_source(const T *src, int srcSize) {
-        _dropAll();
-        data = src;
+    void force_array(const DArrayData &d) {
+        __dropAll();
+        __reserve(d.size, __metatype());
+        push_array(d);
+        size = d.size;
+    }
+    void force_data(const T *src, int srcSize) {
+        __dropAll();
+        __reserve(srcSize, __metatype());
+        _push_data_line(src, srcSize);
         size = srcSize;
-        alloced = srcSize;
-        outterData = true;
     }
 
-    bool readOnly() const {return outterData;}
-    int _available() const {return alloced - size;}
-    int _size() const {return size;}
-    int _capacity() const {return alloced;}
-    iterator _begin() {return data;}
-    const_iterator _begin() const {return data;}
-    iterator _end() {return data + size;}
-    const_iterator _end() const {return data + size;}
+    // adding one:
+    void push() {
+        __push(__getPlace(), __metatype());
+    }
+    void push(const T &src) {
+        __push(__getPlace(), src, __metatype());
+    }
+    void insert(int insertTo) {
+        __reserveUp();
+        __moveObjects( (data + insertTo + 1), (data + insertTo), (size - insertTo));
+        __push(data + insertTo, __metatype());
+    }
+    void insert(int insertTo, const T &src) {
+        __reserveUp();
+        __moveObjects( (data + insertTo + 1), (data + insertTo), (size - insertTo));
+        __push(data + insertTo, src, __metatype());
+        ++size;
+    }
+    void insert_rough(T *insertTo, const T &src) {
+        __reserveUp();
+        __moveObjects( insertTo + 1, insertTo, (data + size) - insertTo);
+        __push(insertTo, src, __metatype());
+        ++size;
+    }
+    void insert_rough(complex_iterator insertTo, const T &src) {
+        insert_rough(insertTo.p, src);
+    }
 
-    void __reserveUp(int s) {
-        __reserve(alloced + s, __metatype());
+    // adding several:
+    void push_array(const DArrayData &d) {
+        __push_array(d, __metatype());
     }
-    void _reserve(int s) {
-        __reserve(s, __metatype());
+    void push_data(const T *src, int n) {
+        if(__metatype::direct_placement && __trivial_copy && __trivial_destruct) {
+            if(available() < n) {
+                reserveUp(n - available());
+            }
+            copy_mem(data + size, src, n);
+            size += n;
+        } else {
+            auto b = src;
+            auto e = src + n;
+            while(b!=e) {
+                push(*b++);
+            }
+        }
     }
-    //=================================================================
+    void push_empty_line(int n) {
+        reserve(size + n);
+        if(__trivial) {
+            size += n;
+        } else {
+            while(n--) push();
+        }
+    }
+
+    // removing:
+    void remove_by_index(int i) {
+        __destruct(i, __metatype());
+        __moveObjects( (data + i),  (data + i + 1),  (size - i - 1) );
+        --size;
+    }
+    void remove_last() {
+        __destruct(size-1, __metatype());
+        --size;
+    }
+    int remove(const_type &t) {
+        int i = index_of(t);
+        if(i != -1) remove_by_index(i);
+        return i;
+    }
+    void drop() {
+        __destructAll(__metatype());
+        zero_mem(data, size);
+        size = 0;
+    }
+    void drop_tail(int firstSaved) {
+        __destruct(firstSaved, size, __metatype());
+        zero_mem(data + firstSaved, size - firstSaved);
+        size = firstSaved;
+    }
+    void cut(int cutBegin, int cutEnd) {
+        __destruct(cutBegin, cutEnd, __metatype());
+        __moveObjects(data + cutBegin, data + cutEnd, size - cutEnd);
+        size -= (cutEnd-cutBegin);
+    }
+
+    // data access:
+    T& ref(int i) {return __ref(i, __metatype());}
+    const T& ref(int i) const {return __ref(i, __metatype());}
+    T* ptr(int i) {return __ptr(i, __metatype());}
+    const T* ptr(int i) const {return __ptr(i, __metatype());}
+
+    StoredType * changableData() {return data;}
+    const StoredType * constData() const {return data;}
+    iterator begin() {return data;}
+    const_iterator begin() const {return data;}
+    iterator end() {return data + size;}
+    const_iterator end() const {return data + size;}
+
+    // analysis (const):
+    int index_of(const_type &t, int from = 0, int to = 0) const {
+        if(from > to)
+            std::swap(from, to);
+        to = to ? to : size;
+        int i = 0;
+        auto b = begin() + from;
+        auto e = begin() + to;
+        while(b!=e) {
+            if(*b++ == t) {
+                return i + from;
+            }
+            ++i;
+        }
+        return -1;
+    }
+    int count(const T &t, int from = 0, int to = 0) const {
+        if(from > to)
+            std::swap(from, to);
+        to = to ? to : size;
+        int c = 0;
+        auto b = begin() + from;
+        auto e = begin() + to;
+        while(b!=e) {
+            if(*b++ == t) ++c;
+        }
+        return c;
+    }
+    bool contain(const T &t, int from = 0, int to = 0) const {
+        if(from > to)
+            std::swap(from, to);
+        to = to ? to : size;
+        auto b = begin() + from;
+        auto e = begin() + to;
+        while(b!=e) {
+            if(*b++ == t) return true;
+        }
+        return false;
+    }
+
+    // special:
+    inline void swap(int pos1, int pos2) { std::swap(data[pos1], data[pos2]); }
+    void relocate(int dstPos, int srcPos, int n) {
+        DArrayData _d;
+        _d._reserve(n);
+        placementNewMemCopy(_d.data, data + srcPos, n);
+        if(srcPos > dstPos) {
+            placementNewMemMove(data + dstPos + n, data + dstPos, srcPos - dstPos);
+        } else {
+            placementNewMemMove(data + srcPos, data + srcPos + n, dstPos - srcPos);
+        }
+        placementNewMemCopy(data + dstPos, _d.data, n);
+    }
+    void sort() {
+        __sort(__metatype());
+    }
+
+    // special with binary sorted data:
+    int inner_bin_find(const T &t, int from, int n) const {
+
+        // 0: from == 0 n == 0
+        // 1: [0]
+        // 2: [0] [1]
+        // 3: [0 1] [2]
+        // 4: [0 1] [2 3]
+        // 5: [0 1]  [2 3 4]
+        // 6: [0 1 2] [3 4 5]
+
+        // 0: from == 0 n == 0
+        // 1: [7]
+        // 2: [3] [11]
+        // 3: [3 11] [24]
+        // 4: [3 11] [24 32]
+        // 5: [3 11]  [24 32 41]
+        // 6: [3 11 24] [32 41 55]
+
+        if(n == 0) return -1;
+        if(n == 1) return t == ref(from) ? from : -1;
+
+        const int local_pos = ((n-1) / 2) ;
+        const int pos = from + local_pos;
+
+
+
+        const T &value = ref(pos);
+
+        if( t == value ) return pos;
+
+
+        if (t > value) {
+            return inner_bin_find(t, pos + 1, n - (local_pos + 1));
+        } else {
+            return inner_bin_find(t, from, local_pos);
+        }
+    }
+    inline int bin_find(const T &t) const { return inner_bin_find(t, 0, size); }
+    int unique_insert_with_sort_pos(const T &t, int from, int n) const {
+
+        if(n == 0) return from;
+
+
+        const int local_pos = ((n-1) / 2); // 0
+        const int pos = from + local_pos; // 0
+
+        const T &value = ref(pos);
+
+        if( t == value ) return -1;
+
+        if (t > value) {
+            return unique_insert_with_sort_pos(t, pos + 1, n - (local_pos + 1));
+        } else {
+            return unique_insert_with_sort_pos(t, from, local_pos);
+        }
+    }
+    int unique_insert_with_sort(const T &t) {
+        int pos = unique_insert_with_sort_pos(t, 0, size);
+        if(pos < 0) return pos;
+        if(pos == size) {
+            push(t);
+            return pos;
+        }
+        if(pos < size) {
+            insert(pos, t);
+            return pos;
+        }
+    }
+
+private:  // ===================== UNDERLAYER:
+
+    // mem management:
     void __reserve(int s, _direct_placement_layer) {
-
-//        std::cout << "__reserve: size: " << s
-//                  << " placement: " << placement()
-//                  << std::endl;
 
         if(!__trivial_copy || !__trivial_destruct) {
 
@@ -231,335 +850,21 @@ private:
         alloced = s;
     }
     void __reserve(int s, _undirect_placement_layer) {
-
-
-
         data = reget_mem(data, s);
         alloced = s;
-
-//        std::cout << "__reserve: reserve size: " << s
-//                  << " inner size: " << size
-//                  << " alloced: " << alloced
-//                  << " placement: " << placement()
-//                  << std::endl;
     }
     void __reserveUp() {
         if(alloced == size) {
             int s = ( size + 1 ) * 2;
-            __reserve(s, __metatype());
+            reserve(s);
         }
     }
     StoredType *__getPlace() {
         __reserveUp();
         return data + size++;
     }
-    //==============================================================
-    void __reserve_debug(int s, _direct_placement_layer) {
 
-
-        if(!__trivial_copy || !__trivial_destruct) {
-
-            StoredType *p = get_zmem<StoredType>(s);
-            StoredType *_p = p;
-            auto b = data;
-            auto e = data + size;
-            while(b!=e) {
-                new (_p) T(*b);
-                b->~T();
-                ++_p; ++b;
-            }
-            free_mem(data);
-            data = p;
-
-
-
-            std::cout << "__reserve_debug (_direct_placement_layer) [untrivial]:"
-                      << " data: " << (void*)data
-                      << " alloced: " << alloced
-                      << " size: " << size
-                      << std::endl;
-
-        } else {
-//            data = reget_mem(data, s);
-            data = (StoredType*)realloc(data, sizeof(StoredType) * s);
-
-            std::cout << "__reserve_debug (_direct_placement_layer) [trivial]:"
-                      << " data: " << (void*)data
-                      << " realloc size: " << s
-                      << " alloced: " << alloced
-                      << " size: " << size
-                      << std::endl;
-
-        }
-        alloced = s;
-    }
-    void __reserve_debug(int s, _undirect_placement_layer) {
-
-
-
-        data = reget_mem(data, s);
-        alloced = s;
-
-        std::cout << "__reserve_debug (_undirect_placement_layer):"
-                  << " data: " << (void*)data
-                  << " alloced: " << alloced
-                  << " size: " << size
-                  << std::endl;
-    }
-    void __reserveUp_debug() {
-        if(alloced == size) {
-            int s = ( size + 1 ) * 2;
-
-            __reserve_debug(s, __metatype());
-
-            std::cout << "__reserveUp_debug:"
-                      << " alloced: " << alloced
-                      << " size: " << size
-                      << std::endl;
-        }
-    }
-    StoredType *__getPlace_debug() {
-        __reserveUp_debug();
-
-        auto place = data + size;
-
-        std::cout << "__getPlace_debug:"
-                  << " data: " << (void*)data
-                  << " place: " << (void*)place
-                  << " size: " << size
-                  << " alloced: " << alloced
-                  << " last place: " << data + alloced
-                  << std::endl;
-        ++size;
-        return place;
-    }
-private:
-    T& __ref(int i, _direct_placement_layer) {return data[i];}
-    T& __ref(int i, _undirect_placement_layer) {return *data[i];}
-    const T& __ref(int i, _direct_placement_layer) const {return data[i];}
-    const T& __ref(int i, _undirect_placement_layer) const {return *data[i];}
-    T* __ptr(int i, _direct_placement_layer) {return data + i;}
-    T* __ptr(int i, _undirect_placement_layer) {return data[i];}
-    const T* __ptr(int i, _direct_placement_layer) const {return data + i;}
-    const T* __ptr(int i, _undirect_placement_layer) const {return data[i];}
-
-    T& _ref(int i) {return __ref(i, __metatype());}
-    const T& _ref(int i) const {return __ref(i, __metatype());}
-    T* _ptr(int i) {return __ptr(i, __metatype());}
-    const T* _ptr(int i) const {return __ptr(i, __metatype());}
-
-
-
-    void _moveObjects(StoredType *dst, StoredType *src, int n) {
-        placementNewMemMove(dst, src, n);
-    }
-    void _copy_data(const DArrayData &d) {
-        if(__metatype::direct_placement && __trivial_copy) {
-            copy_mem(data, d.data, std::min(size, d.size));
-        } else {
-            int s = std::min(size, d.size);
-            auto b = data;
-            auto e = data + s;
-            auto b_src = d.data;
-            while(b!=e) {
-                _set_value(b++, *b_src++, __metatype());
-            }
-        }
-    }
-    void _copy_data(const T *src, int srcSize) {
-        if(__metatype::direct_placement && __trivial_copy) {
-            copy_mem(data, src, std::min(size, srcSize));
-        } else {
-            int s = std::min(size, srcSize);
-            auto b = data;
-            auto e = data + s;
-            auto b_src = src;
-            while(b!=e) {
-                _set_value(b++, *b_src++, __metatype());
-            }
-        }
-    }
-    void _force_data(const DArrayData &d) {
-        _dropAll();
-        __reserve(d.size, __metatype());
-        _push_d(d);
-        size = d.size;
-    }
-    void _force_data(const T *src, int srcSize) {
-        _dropAll();
-        __reserve(srcSize, __metatype());
-        _push(src, srcSize);
-        size = srcSize;
-    }
-    int _index_of(const T &t, int from = 0, int to = 0) const {
-        if(from > to)
-            std::swap(from, to);
-        to = to ? to : size;
-        int i = 0;
-        auto b = _begin() + from;
-        auto e = _begin() + to;
-        while(b!=e) {
-            if(*b++ == t) {
-                return i + from;
-            }
-            ++i;
-        }
-        return -1;
-    }
-    int _count(const T &t, int from = 0, int to = 0) const {
-        if(from > to)
-            std::swap(from, to);
-        to = to ? to : size;
-        int c = 0;
-        auto b = _begin() + from;
-        auto e = _begin() + to;
-        while(b!=e) {
-            if(*b++ == t) ++c;
-        }
-        return c;
-    }
-    bool _contain(const T &t, int from = 0, int to = 0) const {
-        if(from > to)
-            std::swap(from, to);
-        to = to ? to : size;
-        auto b = _begin() + from;
-        auto e = _begin() + to;
-        while(b!=e) {
-            if(*b++ == t) return true;
-        }
-        return false;
-    }
-    void _remove_by_index(int i) {
-        _destruct(i, __metatype());
-        _moveObjects( (data + i),  (data + i + 1),  (size - i - 1) );
-        --size;
-    }
-    void _remove(const T &t) {
-        int i = _index_of(t);
-        if(i != -1) _remove_by_index(i);
-    }
-    void _drop() {
-        _destructAll(__metatype());
-        zero_mem(data, size);
-        size = 0;
-    }
-    void _cut(int cutBegin, int cutEnd) {
-        _destruct(cutBegin, cutEnd, __metatype());
-        _moveObjects(data + cutBegin, data + cutEnd, size - cutEnd);
-        size -= (cutEnd-cutBegin);
-    }
-    void _insert(int insertTo) {
-        __reserveUp();
-        _moveObjects( (data + insertTo + 1), (data + insertTo), (size - insertTo));
-        _push(data + insertTo, __metatype());
-    }
-    void _insert(int insertTo, const T &src) {
-        __reserveUp();
-        _moveObjects( (data + insertTo + 1), (data + insertTo), (size - insertTo));
-        __push(data + insertTo, src, __metatype());
-        ++size;
-    }
-    void _relocate(int dstPos, int srcPos, int n) {
-        DArrayData _d;
-        _d._reserve(n);
-        placementNewMemCopy(_d.data, data + srcPos, n);
-        if(srcPos > dstPos) {
-//            std::cout << "_relocate (1): "
-//                      << " dstPos: " << dstPos
-//                      << " srcPos: " << srcPos
-//                      << " n: " << n
-//                      << " move from: " << dstPos
-//                      << " to: " << dstPos + n
-//                      << " size: " << srcPos - dstPos
-//                      << std::endl;
-
-            placementNewMemMove(data + dstPos + n, data + dstPos, srcPos - dstPos);
-        } else {
-//            std::cout << "_relocate (2): "
-//                      << " dstPos: " << dstPos
-//                      << " srcPos: " << srcPos
-//                      << " n: " << n
-//                      << " move from: " << srcPos + n
-//                      << " to: " << srcPos
-//                      << " size: " << dstPos - srcPos
-//                      << std::endl;
-            placementNewMemMove(data + srcPos, data + srcPos + n, dstPos - srcPos);
-        }
-        placementNewMemCopy(data + dstPos, _d.data, n);
-    }
-    void _swap(int f, int s) {
-        std::swap(data[f], data[s]);
-    }
-
-    void _set_value(int i, const T &t, _direct_placement_layer) { data[i] = t; }
-    void _set_value(int i, const T &t, _undirect_placement_layer) { *data[i] = t;}
-    void _set_value(StoredType *pos, const T &t, _direct_placement_layer) { *pos = t; }
-    void _set_value(StoredType *pos, const T &t, _undirect_placement_layer) { **pos = t; }
-
-    void _push_d(const DArrayData &d) {
-        __push_d(d, __metatype());
-    }
-    void __push_d(const DArrayData &d, _direct_placement_layer) {
-        if(__trivial_copy && __trivial_destruct) {
-            if(_available() < d._size()) {
-                __reserveUp(d._size() - _available());
-            }
-            copy_mem(data + size, d.data, d.size);
-        } else {
-            auto b = d.data;
-            auto e = d.data + d.size;
-            while(b!=e) {
-                _push(*b++);
-            }
-        }
-    }
-    void __push_d(const DArrayData &d, _undirect_placement_layer) {
-            auto b = d.data;
-            auto e = d.data + d.size;
-            while(b!=e) {
-                _push(*(*b++));
-            }
-    }
-    void _push(const T *src, int size) {
-        if(__metatype::direct_placement && __trivial_copy && __trivial_destruct) {
-            if(_available() < _size()) {
-                __reserveUp(_size() - _available());
-            }
-            copy_mem(data + size, src, size);
-        } else {
-            auto b = src;
-            auto e = src + size;
-            while(b!=e) {
-                _push(*b++);
-            }
-        }
-    }
-    void _push() { __push(__getPlace(), __metatype()); }
-    void _push(const T &src) {
-        __push(__getPlace(), src, __metatype());
-    }
-    void _push_debug(const T &src) {
-
-        __push_direct_debug(__getPlace_debug(), src, __metatype());
-
-//        auto p = __getPlace_debug();
-//        std::cout << "_push_debug: " << (void*)p
-//                  << std::endl;
-
-    }
-    void __push_direct_debug(StoredType *place, const T &src, _direct_placement_layer) {
-        if(__trivial_copy) {
-
-//            std::cout << "__push_direct_debug: " << (void*)place
-//                      << " data: " << src
-//                      << std::endl;
-
-            *place = src;
-        } else {
-            new (place) T(src);
-        }
-    }
-
+    // adding one:
     void __push(StoredType *place, _direct_placement_layer) {
         if(__trivial) {
             *place = T();
@@ -581,150 +886,286 @@ private:
         *place = new T(src);
     }
 
+    // adding several:
+    void __push_array(const DArrayData &d, _direct_placement_layer) {
 
-    void _destruct(int i, _direct_placement_layer) {
+        if(__trivial_copy && __trivial_destruct) {
+            if(available() < d.size) {
+                reserve(d.size - available());
+            }
+            copy_mem(data + size, d.data, d.size);
+            size += d.size;
+        } else {
+            auto b = d.data;
+            auto e = d.data + d.size;
+            while(b!=e) {
+                push(*b++);
+            }
+        }
+    }
+    void __push_array(const DArrayData &d, _undirect_placement_layer) {
+
+            auto b = d.data;
+            auto e = d.data + d.size;
+            while(b!=e) {
+                push(*(*b++));
+            }
+    }
+
+    // data access:
+    T& __ref(int i, _direct_placement_layer) {return data[i];}
+    T& __ref(int i, _undirect_placement_layer) {return *data[i];}
+    const T& __ref(int i, _direct_placement_layer) const {return data[i];}
+    const T& __ref(int i, _undirect_placement_layer) const {return *data[i];}
+    T* __ptr(int i, _direct_placement_layer) {return data + i;}
+    T* __ptr(int i, _undirect_placement_layer) {return data[i];}
+    const T* __ptr(int i, _direct_placement_layer) const {return data + i;}
+    const T* __ptr(int i, _undirect_placement_layer) const {return data[i];}
+
+    void __set_value(int i, const T &t, _direct_placement_layer) { data[i] = t; }
+    void __set_value(int i, const T &t, _undirect_placement_layer) { *data[i] = t;}
+    void __set_value(StoredType *pos, const T &t, _direct_placement_layer) { *pos = t; }
+    void __set_value(StoredType *pos, const T &t, _undirect_placement_layer) { **pos = t; }
+
+    // destructing:
+    void __destruct(int i, _direct_placement_layer) {
         if(!__trivial_destruct) {
             data[i].~T();
         }
     }
-    void _destruct(int i, _undirect_placement_layer) {
+    void __destruct(int i, _undirect_placement_layer) {
         delete data[i];
     }
-    void _destruct(int begin, int end, _direct_placement_layer) {
+    void __destruct(int begin, int end, _direct_placement_layer) {
         if(!__trivial_destruct) {
             auto b = data + begin;
             auto e = data + end;
             while(b!=e) {(--e)->~T();}
         }
     }
-    void _destruct(int begin, int end, _undirect_placement_layer) {
+    void __destruct(int begin, int end, _undirect_placement_layer) {
         auto b = data + begin;
         auto e = data + end;
         while(b!=e) {delete *(--e);}
     }
-    void _destructAll(_direct_placement_layer) {
+    void __destructAll(_direct_placement_layer) {
         if(!__trivial_destruct) {
             auto b = data;
             auto e = data + size;
             while(b!=e) {(--e)->~T();}
         }
     }
-    void _destructAll(_undirect_placement_layer) {
+    void __destructAll(_undirect_placement_layer) {
         auto b = data;
         auto e = data + size;
         while(b!=e) {delete *(--e);}
     }
-
-    void _dropAll() {
-        _destructAll(__metatype());
+    void __dropAll() {
+        __destructAll(__metatype());
         free_mem(data);
         data = nullptr;
         alloced = 0;
         size = 0;
-        outterData = false;
+    }
+
+    // special:
+    void __moveObjects(StoredType *dst, StoredType *src, int n) {
+        placementNewMemMove(dst, src, n);
+    }
+    void __sort(_direct_placement_layer) {
+        std::qsort(
+                    data,
+                    size,
+                    sizeof(StoredType),
+                    [](const void *x, const void *y) {
+                        if(*reinterpret_cast<const StoredType*>(x) > *reinterpret_cast<const StoredType*>(y)) return 1;
+                        if(*reinterpret_cast<const StoredType*>(x) < *reinterpret_cast<const StoredType*>(y)) return -1;
+                        return 0;
+                    }
+
+                    );
+    }
+    void __sort(_undirect_placement_layer) {
+        std::qsort(
+                    data,
+                    size,
+                    sizeof(StoredType),
+                    [](const void *x, const void *y) {
+                        if(**reinterpret_cast<const StoredType*const*>(x) > **reinterpret_cast<const StoredType*const*>(y)) return 1;
+                        if(**reinterpret_cast<const StoredType*const*>(x) < **reinterpret_cast<const StoredType*const*>(y)) return -1;
+                        return 0;
+                    }
+
+                    );
     }
 };
+
+
+
 template <class T, DArrayMemManager memType = Auto>
-class DArray {
+class DArray :
+        public DWatcher
+        <
+
+            typename
+
+            std::conditional<
+
+                __INTEGRAL(T) || __FLOATING(T) || __POINTER(T),
+
+                DTrivialArrayData<T>, DArrayData<T, memType>
+
+            >::type
+
+        >
+{
 public:
-    friend class DReadArray<T, memType>;
-    typedef DArrayData<T, memType> inner_t;
-    DArray() { //+
-        w.hold(new DArrayData<T, memType>);
+    typedef
+    typename
+
+    std::conditional<
+
+        __INTEGRAL(T) || __FLOATING(T) || __POINTER(T),
+
+        DTrivialArrayData<T>, DArrayData<T, memType>
+
+    >::type
+            __DATA_T;
+
+    typedef DWatcher<__DATA_T> target_type;
+
+
+
+
+
+#define DATA (reinterpret_cast<__DATA_T*>(this->data()))
+#define CDATA (reinterpret_cast<const __DATA_T*>(this->data()))
+
+    DArray() : target_type(true) { //+
+
+        reinterpret_cast<__DATA_T*>(
+
+        this->data()
+
+                    )
+                ;
+
     }
     explicit DArray(int n) {
-        w.hold(new DArrayData<T, memType>);
+        this->hold(new __DATA_T);
         appendNs(n);
     }
     void clear() { //+
+        detach();
         *this = DArray();
     }
-
     void drop() {
         detach();
-        w.data()->_drop();
+        DATA->fdrop();
     }
-    using iterator = typename inner_t::iterator;
-    using const_iterator = typename inner_t::const_iterator;
+    using iterator = typename __DATA_T::iterator;
+    using const_iterator = typename __DATA_T::const_iterator;
+    typedef const typename __const_type<T>::type const_type;
 
     // undirect
     // direct + full trivial
     // direct + complex + trivial copy
     // direct + full complex
 
-    bool empty() const {return w.data()->_size() == 0;} //+, +
-    int size() const { return w.data()->_size(); } //+, +
-    int capacity() const {return w.data()->_capacity();} //+, +
-    int available() const {return w.data()->_available();} //+, +
+    inline bool empty() const {return CDATA->getSize() == 0;} //+, +
+    inline int size() const { return CDATA->getSize(); } //+, +
+    inline int bytesSize() const { return CDATA->getBytesSize();}
+    inline int capacity() const {return CDATA->capacity();} //+, +
+    inline int available() const {return CDATA->available();} //+, +
 
-    iterator begin() { detach(); return w.data()->_begin(); } //+, +, +
-    iterator end() { detach(); return w.data()->_end(); } //+, +, +
-    iterator first() { detach(); return w.data()->_begin(); } //+
-    iterator last() { detach(); return w.data()->_end() - 1; } //+
 
-    const_iterator constBegin() const { return w.data()->_begin(); } //+
-    const_iterator constEnd() const { return w.data()->_end(); } //+
-    const_iterator constFirst() const { return w.data()->_begin(); } //+
-    const_iterator constLast() const { return w.data()->_end() - 1; } //+
 
-    T& operator[](int i) { detach(); return w.data()->_ref(i); } //+, +, +
-    const T& operator[](int i) const { return w.data()->_ref(i); } //+, +, +
+    typename __DATA_T::StoredType * changableData() {return DATA->changableData();}
+    const typename __DATA_T::StoredType * constData() const {return CDATA->constData();}
 
-    T& front() {detach(); return w.data()->_ref(0);} //+
-    T& back() {detach(); return w.data()->_ref(size() - 1);} //+
-    const T& constFront() const {return w.data()->_ref(0);} //+
-    const T& constBack() const {return w.data()->_ref(size() - 1);} //+
+    iterator begin() { detach(); return DATA->begin(); } //+, +, +
+    iterator end() { detach(); return DATA->end(); } //+, +, +
+    iterator first() { detach(); return DATA->begin(); } //+
+    iterator last() { detach(); return DATA->end() - 1; } //+
 
-    int indexOf(const T &t) const { return w.data()->_index_of(t); } //+, +
-    int indexOfWithin(const T &t, int from, int to) const { return w.data()->_index_of(t, from, to); } //+, +
-    int count(const T &t) const { return w.data()->_count(t); } //+
-    int countWithin(const T &t, int from, int to) const { return w.data()->_count(t, from, to); } //+
-    bool contain(const T &t) const { return w.data()->_contain(t); } //+
-    bool containWithin(const T &t, int from, int to) const {return w.data()->_contain(t, from, to);} //+
+    const_iterator constBegin() const { return CDATA->begin(); } //+
+    const_iterator constEnd() const { return CDATA->end(); } //+
+    const_iterator constFirst() const { return CDATA->begin(); } //+
+    const_iterator constLast() const { return CDATA->end() - 1; } //+
+
+    inline bool inRange(int index) const {return (index > -1 && index < size());}
+    T * ptr(int i) {return DATA->ptr(i);}
+    const T * ptr(int i) const {return CDATA->ptr(i);}
+
+    T * atPtr(int i) {return inRange ? DATA->ptr(i) : nullptr;}
+    const T * atPtr(int i) const {return inRange ? CDATA->ptr(i) : nullptr;}
+
+    inline T& operator[](int i) { detach(); return DATA->ref(i); } //+, +, +
+    inline const T& operator[](int i) const { return CDATA->ref(i); } //+, +, +
+
+    T& front() {detach(); return DATA->ref(0);} //+
+    T& back() {detach(); return DATA->ref(size() - 1);} //+
+    const T& constFront() const {return CDATA->ref(0);} //+
+    const T& constBack() const {return CDATA->ref(size() - 1);} //+
+
+    int indexOf(const_type &t) const { return CDATA->index_of(t); } //+, +
+    int indexOfWithin(const T &t, int from, int to) const { return CDATA->index_of(t, from, to); } //+, +
+    int count(const T &t) const { return CDATA->count(t); } //+
+    int countWithin(const T &t, int from, int to) const { return CDATA->count(t, from, to); } //+
+    bool contain(const T &t) const { return CDATA->contain(t); } //+
+    bool containWithin(const T &t, int from, int to) const {return CDATA->contain(t, from, to);} //+
 
 
 
     void append() { //+, +, +
         detach();
-        w.data()->_push();
+        DATA->push();
     }
     void append(const T &t) { //+, +, +
         detach();
-        w.data()->_push(t);
-    }
-    void append_debug(const T &t) {
-        w.data()->_push_debug(t);
+        DATA->push(t);
     }
     void append(const T &t, int n) { //+, +, +
         if(n > 0) {
             detach();
             while(n--) {
-                w.data()->_push(t);
+                DATA->push(t);
             }
         }
     }
     void appendNs(int n) { //+, +, +
         if(n > 0) {
             detach();
-            while(n--) {
-                w.data()->_push();
-            }
+            DATA->push_empty_line(n);
         }
     }
-    void appendLine(const DArray<T> &a) {
+    void appendArray(const DArray<T> &a) {
         detach();
-        inner_t *d = w.data();
-        d->_push_d(*a.w.data());
+        DATA->push_array(*a.data());
     }
-    void appendLine(const T *src, int size) {
+    void appendArray(const DArray<T> &a, int n) {
+        DATA->push_array(*a.data(), n);
+    }
+    void appendData(const T *src, int size) {
         detach();
-        inner_t *d = w.data();
-        d->_push(src, size);
+        DATA->push_data(src, size);
     }
+    int unique_insert_pos(const T &t) const {
+        return CDATA->unique_insert_with_sort_pos(t, 0, size());
+    }
+    int unique_sorted_insert(const T &t) {
+        detach();
+        return DATA->unique_insert_with_sort(t);
+    }
+
+    int indexOf_bin(const T &t) const { return CDATA->bin_find(t); }
+    int indexOfWithin_bin(const T &t, int from, int to) const {  return CDATA->inner_bin_find(t, from, to - from); }
+    bool contain_bin(const T &t) const {return CDATA->bin_find(t) == -1 ? false : true; }
+    bool containWithin_bin(const T &t, int from, int to) const {return CDATA->inner_bin_find(t, from, to - from) == -1 ? false : true; }
 
     void insert(int pos, const T &t) { //+, +
         detach();
-        w.data()->_insert(pos, t);
+        DATA->insert(pos, t);
     }
     void insertBefore(const T &t, const T &beforeThis) { //+, +
         int i = indexOf(beforeThis);
@@ -736,6 +1177,15 @@ public:
         auto e = end();
         while(b!=e)  *b++ = t;
     }
+    void sort() {
+        detach();
+        DATA->sort();
+    }
+
+#define RUN2(X) \
+    auto b = begin(); \
+    auto e = end(); \
+    while(b!=e) {*(b++) = X();}
 #define RUN(X) \
     auto b = begin(); \
     auto e = end(); \
@@ -755,6 +1205,7 @@ public:
     int i = 0; \
     while(b!=e) { X(*b++, i++);}
 
+    void runIn(T (*cb)()) {RUN2(cb);}
     void runIn(void (*cb)(T&)) {RUN(cb);}
     void runIn(void (*cb)(T&, int)) {IRUN(cb);} //+, +
     void runOut(void (*cb)(const T&)) const {CRUN(cb);}
@@ -762,11 +1213,11 @@ public:
 
     void removeByIndex(int i) { //+, +
         detach();
-        w.data()->_remove_by_index(i);
+        DATA->remove_by_index(i);
     }
-    void remove(const T &t) { //+, +
+    int remove(const_type &t) { //+, +
         detach();
-        w.data()->_remove(t);
+        return DATA->remove(t);
     }
     void removeFirst() { //+, +
         detach();
@@ -774,7 +1225,7 @@ public:
     }
     void removeLast() { //+, +
         detach();
-        removeByIndex(size());
+        DATA->remove_last();
     }
 
     void push_back() {append();} //+, +, +
@@ -791,6 +1242,14 @@ public:
             cutEnd(s - n);
         }
     }
+    void reformUp(int n) {
+        int s = size();
+        if(n > s) appendNs(n-s);
+    }
+    void reformDown(int n) {
+        if( n < size() )
+            DATA->fdrop_tail(n);
+    }
     void cut(int start, int end) { //+, +
         if(size() && start >= 0 && start < size() && end >= 0 && end < size()) {
             detach();
@@ -799,133 +1258,103 @@ public:
             } else {
                 if(start > end)
                     std::swap(start, end);
-                w.data()->_cut(start, end);
+                DATA->cut(start, end);
             }
         }
     }
     void cutBegin(int n) { //+, +
         if(n > size() || n < 0) return;
+        detach();
         if(n == 1) return removeFirst();
-        w.data()->_cut(0, n);
+        DATA->cut(0, n);
     }
     void cutEnd(int n) { //+, +
         if(n > size() || n < 0) return;
         if(n == 1) return removeLast();
-        w.data()->_cut(size() - n, size());
+        DATA->drop_tail(size() - n);
     }
 
     int reserve(int n) { //+, +
         detach();
-        w.data()->_reserve(n);
+        DATA->reserve(n);
         return capacity();
     }
 
-    void swap(DArray &a) {w.swap(a.w);}
+    void swap(DArray &a) {this->swap(a.w);}
     void elementsSwap(int f, int s) { //+, +
         if(f < 0 || f >= size() || s < 0 || s >= size()) return;
         detach();
-        w.data()->_swap(f, s);
+        DATA->swap(f, s);
+    }
+
+    void shiftPart(int from, int n) {
+        detach();
+        DATA->insert_line(from, n);
     }
     void movePart(int dstPos, int srcPos, int n) { //+, +
         if(srcPos < 0 || dstPos < 0 || srcPos == dstPos || n <= 0 || srcPos > size() - n || dstPos > size() - n)
             return;
         detach();
-        w.data()->_relocate(dstPos, srcPos, n);
+        DATA->relocate(dstPos, srcPos, n);
     }
     void moveElement(int dstPos, int srcPos) { //+, +
         if(srcPos < 0 || dstPos < 0 || srcPos == dstPos || srcPos > size() || dstPos > size())
             return;
         detach();
-        w.data()->_relocate(dstPos, srcPos, 1);
+        DATA->relocate(dstPos, srcPos, 1);
     }
     void moveElementToEnd(int pos) { //+, +
         if(pos < 0 || pos > size() || pos == size()-1)
             return;
         detach();
-        w.data()->_relocate(size()-1, pos, 1);
+        DATA->relocate(size()-1, pos, 1);
     }
     void moveElementToBegin(int pos) { //+, +
         if(pos < 0 || pos > size() || pos == 0)
             return;
         detach();
-        w.data()->_relocate(0, pos, 1);
+        DATA->relocate(0, pos, 1);
     }
 
-    void copyValue(const DArray &a) {
+    void copyArray(const DArray &a) {
         detach();
-        w.data()->_copy_data(*a.w.data());
+        DATA->copy_array(*a.data());
     }
-    void copyValue(const T *src, int size) {
+    void copyArray(const DArray &a, int n) {
         detach();
-        w.data()->_copy_data(src, size);
+        DATA->copy_array(*a.data(), n);
+    }
+    void copyData(const T *src, int size) {
+        detach();
+        DATA->copy_data(src, size);
+    }
+    void copyTail(const DArray &a) {
+        if( a.size() > size() ) {
+            detach();
+            DATA->copy_tail(*a.data());
+        }
+    }
+    void copyTail(const DArray &a, int tailSize) {
+        detach();
+        DATA->copy_tail(*a.data(), tailSize);
     }
     void force(const DArray &a) {
         detach();
-        w.data()->_force_data(*a.w.data());
+        DATA->force_array(*a.w.data());
     }
     void force(const T *src, int size) {
         detach();
-        w.data()->_force_data(src, size);
+        DATA->force_data(src, size);
     }
-    void setSource(T *src, int size) {
-        detach();
-        w.data()->_set_source(src, size);
-    }
-
-
-    const DDualWatcher<inner_t>& watcher() const {return w;}
-
 
 private:
     void detach() {
-        w.detach();
-//        std::cout << "call detach:"
-//                  << " isu: " << w.isUnique()
-//                  << " refs: " << w.base->refs()
-//                  << std::endl;
+        target_type::detach();
+
     }
-private:
-    DDualWatcher<inner_t> w;
 };
-template <class T, DArrayMemManager memType = Auto>
-class DReadArray {
-public:
-    DReadArray(const DArray<T, memType> &a) : base(a) {}
-    DReadArray<T, memType>& operator=(const DArray<T, memType> &a) {base = a; return *this;}
 
-    using const_iterator = typename DArray<T, memType>::const_iterator;
 
-    bool empty() const {return base.empty();}
-    int size() const { return base.size(); }
-    int capacity() const {return base.capacity();}
-    int available() const {return base.available();}
-
-    const_iterator begin() const { return base.constBegin(); }
-    const_iterator end() const { return base.constEnd(); }
-    const_iterator first() const { return base.constFirst(); }
-    const_iterator last() const { return base.constLast(); }
-
-    const T& operator[](int i) const { return base[i]; }
-
-    const T& front() const {return base.constFront();}
-    const T& back() const {return base.constBack();}
-
-    int indexOf(const T &t) const { return base.indexOf(t); }
-    int indexOfWithin(const T &t, int from, int to) const { return base.indexOfWithin(t, from, to); }
-    int count(const T &t) const { return base.count(t); }
-    int countWithin(const T &t, int from, int to) const { return base.countWithin(t, from, to); }
-    bool contain(const T &t) const { return base.contain(t); }
-    bool containWithin(const T &t, int from, int to) const {return base.containWithin(t, from, to);}
-
-    const DArray<T, memType>& inner() const {return base;}
-
-    void setSource(const T *src, int size) {
-        base.detach();
-        base.w.data()->_set_const_source(src, size);
-    }
-private:
-    DArray<T, memType> base;
-};
 
 
 

@@ -54,6 +54,20 @@
     ((uint8_t*)(p))[0] = ((uint8_t*)(p_val))[3];      \
 } while(0)
 
+#define BITSET8(V) (std::bitset<8>{V})
+#define BITSET32(V) (std::bitset<32>{V})
+#define LEFT_ROTATE32(X, n) ( (X << n) | (X >> (32 - n)) )
+#define RIGHT_ROTATE32(X, n) ( (X >> n) | (X << (32 - n)) )
+#define RIGHT_SHIFT(X, n) ( X >> n )
+#define BIGTOLITTLE32(VALUE) \
+    ( \
+    ( ( ((uint8_t*)(&VALUE))[0]) << 24 ) | \
+    ( ( ((uint8_t*)(&VALUE))[1]) << 16 ) | \
+    ( ( ((uint8_t*)(&VALUE))[2]) << 8 ) | \
+    ( ( ((uint8_t*)(&VALUE))[3]) << 0 ) \
+    )
+
+
 inline float q_rsqrt(float number) {
     long i;
     float x2;

@@ -25,16 +25,15 @@ SOURCES += \
     DThreadHandler.cpp \
     DWatcher.cpp \
     daran.cpp \
-    dmem.cpp
+    dmem.cpp \
+    sha256.cpp
 
 HEADERS += \
     DArray.h \
     DBox.h \
     DDirReader.h \
-    DHolder.h \
     DItem.h \
     DLexeme.h \
-    DList.h \
     DMatrix.h \
     DMatrixTrack.h \
     DMetaType.h \
@@ -47,7 +46,8 @@ HEADERS += \
     DWatcher.h \
     DothTemplateLibrary.h \
     daran.h \
-    dmem.h
+    dmem.h \
+    sha256.h
 
 # Default rules for deployment.
 unix {

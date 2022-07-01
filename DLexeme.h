@@ -5,6 +5,7 @@
 #include "daran.h"
 #include "DArray.h"
 
+
 class DLexeme
 {
 public:
@@ -31,16 +32,19 @@ public:
         lexeme l;
         sublex* next_or;
     };
-    struct read_context
-    {
+    struct read_context {
+
+
         int min; bool use_min;
         int max; bool use_max;
         bool unique;
         index_t max_size;
+
         void set_min(int v){min = v; use_min = true;}
         void disable_min(){use_min = false;}
         void set_max(int v){max = v; use_max = true;}
         void desable_max(){use_max = false;}
+        void setUnique(bool u) {unique = u;}
     };
     struct lex_context
     {

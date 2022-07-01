@@ -2,9 +2,7 @@
 #define DOTHTEMPLATELIBRARY_H
 
 #include "DArray.h"
-#include "DHolder.h"
 #include "DBox.h"
-#include "DList.h"
 #include "DLexeme.h"
 #include "DMatrix.h"
 #include "DMatrixTrack.h"

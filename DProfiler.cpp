@@ -18,7 +18,7 @@ int usec_dif(timeval* t1, timeval* t2)
 {
     return (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
 }
-timeval time_dif(timeval* t1, timeval* t2)
+timeval time_dif(const timeval* t1, const timeval *t2)
 {
     int dif = (1000000L * (t2->tv_sec - t1->tv_sec)) + (t2->tv_usec - t1->tv_usec);
     int sec = (int)(dif/1000000L);
@@ -84,8 +84,8 @@ void time_point(int name)
         time_points[n].t = t;
     }
 }
-int timeval2usec(timeval *t) {
-    return (1000000L * (t->tv_sec)) + (t->tv_usec);
+uint64_t timeval2usec(const timeval *t) {
+    return uint64_t(1000000L * (t->tv_sec)) + uint64_t(t->tv_usec);
 }
 
 void waitUsec(int usec) {

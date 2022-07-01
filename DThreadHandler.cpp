@@ -1,5 +1,5 @@
 #include "DThreadHandler.h"
-void get_thread_info(int size, int threads, int thread_index, int &start_pos, int &task_on_thread)
+void get_thread_info(size_t size, int threads, int thread_index, size_t &start_pos, size_t &task_on_thread)
 {
     int _tasks_on_thread = size / threads;
     int _gain_threads = size % threads;

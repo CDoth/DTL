@@ -2,6 +2,7 @@
 #define DBOX_H
 #include "DArray.h"
 
+/*
 template <class T>
 class DBox
 {
@@ -73,7 +74,7 @@ private:
     int current;
     DArray<T, Undirect> store;
 };
-
+*/
 /*
  test block
     DBox<A> box;

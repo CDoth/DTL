@@ -2,11 +2,12 @@
 #define DTHREADHANDLER_H
 
 #include "DArray.h"
-#include "DHolder.h"
 #include "DBox.h"
 
 #include <thread>
-void get_thread_info(int size, int threads, int thread_index, int &start_pos, int &task_on_thread);
+
+/*
+void get_thread_info(size_t size, int threads, int thread_index, size_t &start_pos, size_t &task_on_thread);
 int get_thread_id();
 class DThreadHandler
 {
@@ -103,22 +104,22 @@ public:
     fshell(TargetF&& tf,  Args&& ... a)
     {tf(a...);}
 
-    template <class TargetF, class ... Args>
-    static void
-    shell(DHolder<thread_context> tch, TargetF&& tf,  Args&& ... a)
-    {
-//        const thread_context* tc = tch.constPtr();
-//        std::this_thread::sleep_for(tc->sleep_on_start);
-//        int c=tc->repeat;
-//        while(c--) {
-//            tf(a...);
-//            if(c) std::this_thread::sleep_for(tc->sleep_on_repeat);
-//        }
-//        std::this_thread::sleep_for(tc->sleep_on_midle);
-//        auto it = tc->__el_begin;
-//        while(it != tc->__el_end) (*it++)->go();
-//        std::this_thread::sleep_for(tc->sleep_on_end);
-    }
+//    template <class TargetF, class ... Args>
+//    static void
+//    shell(DHolder<thread_context> tch, TargetF&& tf,  Args&& ... a)
+//    {
+////        const thread_context* tc = tch.constPtr();
+////        std::this_thread::sleep_for(tc->sleep_on_start);
+////        int c=tc->repeat;
+////        while(c--) {
+////            tf(a...);
+////            if(c) std::this_thread::sleep_for(tc->sleep_on_repeat);
+////        }
+////        std::this_thread::sleep_for(tc->sleep_on_midle);
+////        auto it = tc->__el_begin;
+////        while(it != tc->__el_end) (*it++)->go();
+////        std::this_thread::sleep_for(tc->sleep_on_end);
+//    }
 
     template <class TargetF, class ... Args>
     static void
@@ -165,26 +166,12 @@ public:
     thread_context context;
 };
 
+*/
+//----------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------
+
 /*
- test block
-
-        DThreadHandler th;
-        th.set_close_f(func2);
-        th.set_close_f(f);
-        th.set_repeat(2);
-
-        th.set_start_sleep(2000);
-        th.set_midle_sleep(2000);
-        th.set_repeat_sleep(2000);
-        th.set_end_sleep(2000);
-
-        th.start(test, 123, 56.78);
-        th.join();
- */
-//----------------------------------------------------------------------------------------------
-//----------------------------------------------------------------------------------------------
-//----------------------------------------------------------------------------------------------
-
 class DThreadMaster
 {
 public:
@@ -216,4 +203,9 @@ private:
     };
     DBox<wrap> thread_box;
 };
+
+*/
+
+
+
 #endif // DTHREADHANDLER_H

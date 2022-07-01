@@ -40,8 +40,8 @@ namespace PROFILER {
      double fsec_dif(timeval* t1, timeval* t2);
      int sec_dif(timeval* t1, timeval* t2);
      int usec_dif(timeval* t1, timeval* t2);
-     int timeval2usec(timeval *t);
-     timeval time_dif(timeval* t1, timeval* t2);
+     uint64_t timeval2usec(const timeval *t);
+     timeval time_dif(const timeval *t1, const timeval* t2);
      timeval gettime();
      int find_tp(int name);
      int find_tp(const char* name);
