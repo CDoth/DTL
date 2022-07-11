@@ -13,32 +13,75 @@
 #include <atomic>
 
 
+enum DWatcherCopyPolicy {
+    WATCHER__COPYABLE,
+    WATCHER__MOVABLE,
+    WATCHER__UNIQUE
+};
 class DBaseWatcher {
 public:
-    DBaseWatcher() : _refs(0), _data(nullptr) {
+    DBaseWatcher() : iRefs(0), pData(nullptr) {
+        iCopyPolicy = WATCHER__COPYABLE;
     }
-    DBaseWatcher(void *data) : _refs(1), _data(data) {}
+    DBaseWatcher(void *data) : iRefs(1), pData(data) {
+        iCopyPolicy = WATCHER__COPYABLE;
+    }
     void watchThis(void *d)  {
-        _data = d;
-        _refs = 1;
+        pData = d;
+        iRefs = 1;
     }
-    int pull() {
-        if(!isUnique()) return leave();
-        return _refs;
-    }
-    int leave() {return _refs > 0 ? --_refs : 0;}
-    int addRef() {return ++_refs;}
+    inline int leave() {return iRefs > 0 ? --iRefs : 0;}
+    inline int addRef() {return ++iRefs;}
+
+    void clear() { iRefs = 0; pData = nullptr; }
+
+    inline void setCopyPolicy( DWatcherCopyPolicy cp ) { iCopyPolicy = cp; }
+    inline DWatcherCopyPolicy copyPolicy() const { return iCopyPolicy; }
 
 
-    int refs() const {return _refs;}
-    void *data() {return _data;}
-    const void *data() const {return _data;}
-    bool isUnique() const {return _refs == 1;}
+    int refs() const {return iRefs;}
+    void *data() {return pData;}
+    const void *data() const {return pData;}
+    bool isUnique() const {return iRefs == 1;}
 
 private:
-    int _refs;
-    void *_data;
+    int iRefs;
+    void *pData;
+    DWatcherCopyPolicy iCopyPolicy;
 };
+class DAbstractBaseWatcher {
+public:
+    DAbstractBaseWatcher() : iRefs(0), pData(nullptr), iCopyPolicy( WATCHER__COPYABLE ) {}
+    DAbstractBaseWatcher( void *data ) : iRefs(1), pData(data), iCopyPolicy( WATCHER__COPYABLE ) {}
+public:
+    void watchThis( void *data ) {
+        pData = data;
+        iRefs = 1;
+    }
+    int leave() {
+        abstractLeave();
+        return iRefs > 0 ? --iRefs : 0 ;
+    }
+    int addRef() {
+        abstractAddRef();
+        return ++iRefs;
+    }
+public:
+    void * data() { return pData; }
+    const void * data() const { return pData; }
+    inline bool isUnique() const { return iRefs == 1; }
+    inline void setCopyPolicy( DWatcherCopyPolicy cp ) { iCopyPolicy = cp; }
+    inline DWatcherCopyPolicy copyPolicy() const { return iCopyPolicy; }
+protected:
+    virtual void abstractLeave() = 0;
+    virtual void abstractAddRef() = 0;
+private:
+    int iRefs;
+    void *pData;
+    DWatcherCopyPolicy iCopyPolicy;
+};
+
+
 class DSafeThreadBaseWatcher {
 public:
     DSafeThreadBaseWatcher() : _refs(0), _data(nullptr) {
@@ -115,7 +158,7 @@ public:
     const DataType* data() const {return base ? reinterpret_cast<const DataType*>(base->data()) : nullptr;}
 private:
     int _pull() {
-        if(base) return base->pull();
+//        if(base) return base->pull();
         return 0;
     }
     void _detach() {
@@ -172,7 +215,9 @@ protected:
     else ERRORPROC;
 
 
-template <class DataType, class BaseWatcher = DBaseWatcher>
+
+
+template <class DataType, class BaseWatcher = DBaseWatcher >
 class DWatcher {
 
 public:
@@ -186,27 +231,12 @@ public:
     DWatcher(bool createTarget, Args && ...a) : base(nullptr) {
         if(createTarget)
             base = new BaseWatcher(new DataType(a...));
-//        else
-//            base = new DBaseWatcher;
-
-
-//        std::cout << "  Create DWatcher(2): "
-//                  << this
-//                  << " base: " << base
-//                  << std::endl;
     }
     // 0:
     DWatcher(DataType *data) {
-
-
-
         base = new BaseWatcher(data);
-
-//        std::cout << "  Create DWatcher(3): "
-//                  << this
-//                  << " base: " << base
-//                  << std::endl;
     }
+
     void hold(DataType *data) {
         if(base) {
             if(base->leave()) {
@@ -219,6 +249,8 @@ public:
             base->watchThis(data);
         }
     }
+
+
     template <class ... Args>
     void createInner(Args && ...a) {
         if(base) {
@@ -227,8 +259,21 @@ public:
             base = new BaseWatcher(new DataType(a...));
         }
     }
+    template <class DataImpl, class ... Args>
+    void createInner(Args && ...a) {
+        if(base) {
+            if(base->data() == nullptr) base->watchThis(new DataImpl(a...));
+        } else {
+            base = new BaseWatcher(new DataImpl(a...));
+        }
+    }
     // 1:
-    DWatcher(const DWatcher& a) : base(a.base) {_addMe();}
+//    DWatcher(const DWatcher& a) : base(a.base) {_addMe();}
+    bool setCopyPolicy( DWatcherCopyPolicy cp ) {
+        if( base ) { base->setCopyPolicy(cp); return true; }
+        return false;
+    }
+    DWatcher(const DWatcher& a) : base(nullptr) { _copy(a); }
     ///
     /// \brief operator =
     /// By default if you copy to DWatcher which already contain target data -
@@ -239,7 +284,10 @@ public:
     /// \param a
     /// \return
     ///
-    DWatcher& operator=(const DWatcher& a) {_copy(a); return *this;}
+    DWatcher& operator=(const DWatcher& a) {
+        _copy(a);
+        return *this;
+    }
 //    DWatcher& operator=(DWatcher& a) {_copy(a); return *this;}
     // 2:
     ~DWatcher() {
@@ -262,6 +310,16 @@ public:
     ///
     DataType* release() {
         return makeUnique();
+//        if( base ) {
+//            auto d = data();
+//            base->leave();
+//            base = nullptr;
+//            return d;
+//        }
+//        return nullptr;
+    }
+    bool releaseDefault() {
+        return _kickMe();
     }
     void clearObject() {
         _kickMe();
@@ -320,14 +378,20 @@ public:
             if(base->leave() == 0) {
                 d = data();
                 delete base;
+//                _releaseBase();
             }
         }
         base = w.base;
-        base->addRef();
+        if(base) base->addRef();
 
         return d;
     }
     void moveFrom( DWatcher &w ) {
+        clearObject();
+        base = w.base;
+        w.base = nullptr;
+    }
+    void moveFrom( const DWatcher &w ) {
         clearObject();
         base = w.base;
         w.base = nullptr;
@@ -342,49 +406,108 @@ public:
     DataType* data() {return base ? reinterpret_cast<DataType*>(base->data()) : nullptr;}
     const DataType* data() const {return base ? reinterpret_cast<const DataType*>(base->data()) : nullptr;}
 
+    inline int refs() const { return base ? base->refs() : -1; }
     inline bool isEmptyObject() const {return base == nullptr;}
     inline bool isCreatedObject() const {return base;}
 
     void * raw_data() {return base ? base->data() : nullptr;}
     const void * raw_data() const {return base ? base->data() : nullptr;}
+
+    BaseWatcher * getBase() { return base; }
+    const BaseWatcher * getConstBase() const { return base; }
+
+    void releaseBase() {
+        if( base ) delete base;
+        base = nullptr;
+    }
 private:
     void _addMe() {
         if(base)
             base->addRef();
     }
-    void _kickMe() {
+    bool _kickMe() {
+
+        bool r = false;
         if(base) {
             if(base->leave() == 0) {
                 auto d = data();
                 if(d) {
                     delete d;
                 }
-                delete base;
+//                delete base;
+                base->clear();
+                _releaseBase();
+                r = true;
             }
             base = nullptr;
         }
+        return r;
+
     }
     void _copy(const DWatcher &w) {
-        if(base) {
 
-            if( base->leave() == 0) {
-                auto d = data();
-                if(d) {
-                    delete d;
+//        if(base) {
+//            if( base->leave() == 0) {
+//                auto d = data();
+//                if(d) {
+//                    delete d;
+//                }
+//                delete base;
+////                _releaseBase();
+//            }
+//        }
+//        base = w.base;
+//        if(base) base->addRef();
+
+
+
+
+        DWatcherCopyPolicy cp = w.base ? w.base->copyPolicy() : WATCHER__COPYABLE;
+        switch( cp ) {
+        case WATCHER__COPYABLE:
+        // increase ref counter and share inner data
+            if(base) {
+                if( base->leave() == 0) {
+                    auto d = data();
+                    if(d) {
+                        delete d;
+                    }
+                    delete base;
                 }
-                delete base;
             }
+            base = w.base;
+            if(base) base->addRef();
+
+            break;
+        case WATCHER__MOVABLE:
+            // ref counter don't change and w lose inner data and become empty
+            moveFrom( w );
+            break;
+        case WATCHER__UNIQUE:
+            // ignore copying
+            break;
         }
-        base = w.base;
-        if(base) {
-            base->addRef();
-        }
+
+
+
+    }
+    void _releaseBase() {
+        if( base ) delete base;
+//        if( base && !base->isAnon() ) delete base;
     }
 
-
+protected:
+    void spreadToMe( const DWatcher &w ) {
+        base = w.base;
+    }
+    void throwBase() {
+        base = nullptr;
+    }
 private:
-    BaseWatcher *base;
+    mutable BaseWatcher *base;
 };
+
+
 template <class DataType>
 class DSafeThreadWatcher : public DWatcher<DataType, DSafeThreadBaseWatcher> {};
 
