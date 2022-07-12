@@ -186,7 +186,7 @@ template <class T> inline void set_mem(T *m, int value, int s) noexcept { memset
 template <class T> inline void zero_mem (T *m, int s) noexcept { if(m) memset(m, 0, range<T>(s)); }
 template <class T> inline void clear_mem(T *m, int s) noexcept { zero_mem(m,s); free_mem(m); }
 template <class T> inline void copy_mem (T *_dst, const T *_src, int s) noexcept { if(_dst&&_src) memcpy(_dst, _src, range<T>(s)); }
-template <class T> inline void move_mem(T *_dst, const T &_src, int s) noexcept {memmove(_dst, _src, range<T>(s));}
+template <class T> inline void move_mem(T *_dst, const T *_src, int s) noexcept {memmove(_dst, _src, range<T>(s));}
 
 template <class T> inline T*   get_mem(int s) noexcept { INC_ALLOCED; return reinterpret_cast<T*>(malloc(range<T>(s))); }
 template <class T> inline T*   get_zmem(int s) noexcept { INC_ALLOCED; return reinterpret_cast<T*>(calloc(range<T>(s), 1)); }
