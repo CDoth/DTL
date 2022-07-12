@@ -243,7 +243,7 @@ public:   // ===================== OPEN LAYER:
     void relocate(int dstPos, int srcPos, int n) {
 
         DTrivialArrayData _d;
-        _d._reserve(n);
+        _d.reserve(n);
         copy_mem(_d.data, data + srcPos, n);
 
         if(srcPos > dstPos) {
