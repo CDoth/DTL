@@ -152,7 +152,83 @@ And my own methods for convenience:
     
 ```
 # DWatcher
+> Smart copying
 
+Suppose `class Descriptor` inherit by `DWatcher<YourData>` - so this class will behave as reference. If you copy incstance of this class to another instance - 
+both instances will containt pointer to same data. So `const` methods of `Descriptor` will use same data to do something, but non constant methods
+can call `DWatcher::detach()` before do changes to create unique copy of target data. You also can ignore `detach()` method in non-constant methods - in 
+this case your `Descriptor` objects will behave as reference.
+
+> Smart destruction
+
+DWatcher use reference counter and inner data will desctuct only when last hight-level class instance destructed.
+
+> Implement interface to your data
+
+Suppose `class Interface` inherit by `DWatcher<YourData>` and `class ConstInterface` also inherit by `DWatcher<YourData>`.
+Define different methods in `Interface` and `ConstInterface` to sepparate access to your data instead put all methods in one single class.
+
+In my current coding conception I use 3 main ideas of data and its access:
+- The data
+- Data descriptor without any methods of interface (just empty class pointed to data)
+- Data interfaces
+
+Point of this model - you contain descriptors of data which has behaivor of reference (no use detach in non-const methods), but this descriptors are 
+usless if you want read/write data. They has no any methods except methods which return you interface object.
+This interface objects provide you methods you need to read/write data. Also main point of this model - descriptors note if you pick interface of data and 
+can block next interface getting for other users/threads/methods while you keep and use your interface instance.
+
+> Size of objects
+
+All objects which contain its data through DWatcher has `sizeof(DWatcherChild) == sizeof(void*)` - size of pointer in your system.
+
+#### Copy policy
+
+Use copy policy to define copy behaivor of DWatcher<T> instances:
+```
+enum DWatcherCopyPolicy {
+    WATCHER__COPYABLE,
+    WATCHER__MOVABLE,
+    WATCHER__UNIQUE
+};
+```
+Copy policy make sense only for source objects ( if you copy A to B, copy policy of B does not metter ).
+
+Policy `WATCHER__COPYABLE` define default model of copying. When you copy object with `WATCHER__COPYABLE` DWatcher up reference counter
+and both objects point to same data.
+
+Policy `WATCHER__MOVABLE` define move sematnic. When you copy object with `WATCHER__MOVABLE` this object become invalid/empty,
+but second object now handle target data. Reference counter does not change. Don't use source object after this copying.
+
+Polciy `WATCHER__UNIQUE` ingore any copy actions. Source object still handle its data and second object still in its state.
+Reference counter does not change.
+
+Policy `WATCHER__SPECIAL` (in plan) can define user own behaivor. For example it is equal `WATCHER__COPYABLE` but with limit of copy 
+(maximum 3 reference).
+
+
+#### Base of DWatcher
+
+DWatcher has 2 template arguments. First - your target data which DWatcher will contain. Second - Base of DWatcher.
+
+By default base is `DBaseWatcher`. This class implement data storing and reference counter. You can inherit by `DBaseWatcher` 
+and add to your base what you need or create new class.
+
+> Keep this in mind - base of DWatcher is copy-space of data, and DWatcher objects is members of this copy-space. When all members leave
+copy-space - data become unwatched and uselss so last leaver destruct data and copy-space.
+
+If you want redefine your custom base - your implementation HAVE TO provide this methods (with this signatures and names):
+```
+    void watchThis(void *d) ; // Hold new data
+    int leave() ; // DWatcher call this when destructing, detaching or just leave copy-space for another reasons
+    int addRef() ; // DWatcher connects to this copy space
+    bool isUnique() const; // You are single member in copy-space
+    int refs() const ; // Members in copy-space
+    void *data() ; 
+    const void *data() const ;
+    void setCopyPolicy( DWatcherCopyPolicy cp ) ;
+    DWatcherCopyPolicy copyPolicy() const ;
+```
 
 # DDirReader
 There is functions and classes to work with files and directories metadatas. DDirReader in not about working with files and files data, 
